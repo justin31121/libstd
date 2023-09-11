@@ -78,6 +78,27 @@ int main() {
 
   io_dir_close(&dir);
 
+  source_dir = "thirdparty/";
+
+  if(!io_dir_open(&dir, source_dir)) {
+    panicf("Can not open: '%s': (%d) %s",
+	   source_dir, io_last_error(), io_last_error_cstr());
+  }
+
+  while(io_dir_next(&dir, &entry)) {
+    if(entry.is_dir) continue;
+    if(!get_title_uppercase(entry.name, name)) continue;
+
+    assert(components_count < COMPONENTS_CAP);
+    Component *c = &components[components_count++];
+
+    memcpy(c->name, name, strlen(name) + 1);
+    memcpy(c->path, entry.abs_name, strlen(entry.abs_name) + 1);
+  }
+
+  io_dir_close(&dir);
+
+
   //PROCESS
 
   io_file_write_cstr(&f, "#ifndef LIBSTD_H\n");
@@ -152,8 +173,6 @@ int main() {
       if(data[j] == '\r') continue;
       temp[temp_size++] = data[j];     
     }
-
-    temp[temp_size++] = '\n';
   }
 
   if(temp_size > 0) {

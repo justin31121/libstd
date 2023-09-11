@@ -30,12 +30,8 @@ typedef double f64;
   }while(0)
 
 #define panicf(...) do{						\
-    fflush(stdout);						\
-    fprintf(stderr, "%s:%d:ERROR: ", __FILE__, __LINE__);	\
-    fprintf(stderr,  __VA_ARGS__ );				\
-    fprintf(stderr, "\n");					\
-    fflush(stderr);						\
+    errorf(__VA_ARGS__);					\
     exit(1);							\
   }while(0)
 
-#endif TYPES_H
+#endif // TYPES_H
