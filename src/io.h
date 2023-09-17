@@ -6,10 +6,11 @@
 
 #ifdef _WIN32
 #  include <windows.h>
+#  define IO_MAX_PATH MAX_PATH  
 #endif //_WIN32
 
 #ifndef IO_DEF
-#  define IO_DEF
+#  define IO_DEF static inline
 #endif //IO_DEF
 
 #ifndef IO_LOG
@@ -24,7 +25,16 @@
 
 // Io_Util
 
+typedef bool (*Io_Stream_Callback)(void *userdata, const unsigned char *buf, size_t buf_size);
+
 IO_DEF bool io_slurp_file(const char *filepath, unsigned char **data, size_t *data_size);
+IO_DEF bool io_write_file(const char *filepath, unsigned char *data, size_t data_size);
+IO_DEF bool io_delete_file(const char *filepath);
+IO_DEF bool io_stream_file(const char *filepath, Io_Stream_Callback callback, unsigned char *buf, size_t buf_size, void *userdata);
+
+IO_DEF bool io_create_dir(const char *dir_path, bool *existed);
+IO_DEF bool io_delete_dir(const char *dir_path);
+
 IO_DEF bool io_exists(const char *file_path, bool *is_file);
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -45,12 +55,7 @@ typedef struct{
 }Io_Dir;
 
 typedef struct{
-#ifdef _WIN32
-  char abs_name[MAX_PATH];
-#else
-  char abs_name[PATH_MAX];
-#endif //_WIN32
-
+  char abs_name[IO_MAX_PATH];
   char *name;
   bool is_dir;  
 }Io_Dir_Entry;
@@ -121,7 +126,117 @@ IO_DEF bool io_slurp_file(const char *filepath, unsigned char **data, size_t *da
   }
 
   *data = result;
+  io_file_close(&f);
 
+  return true;
+}
+
+IO_DEF bool io_write_file(const char *filepath, unsigned char *data, size_t data_size) {
+  Io_File f;
+  if(!io_file_open(&f, filepath, IO_MODE_WRITE)) {
+    IO_LOG("Failed to open '%s': (%d) %s",
+	   filepath, io_last_error(), io_last_error_cstr());
+    return false;
+  }
+
+  if(data_size != io_file_write(&f, data, 1, data_size)) {
+    io_file_close(&f);
+    IO_LOG("Failed to write '%s': (%d) %s",
+	   filepath, io_last_error(), io_last_error_cstr());
+    return false;    
+  }
+
+  io_file_close(&f);
+  return true;
+}
+
+IO_DEF bool io_delete_file(const char *filepath) {
+  if(!DeleteFile(filepath)) {
+    IO_LOG("Failed to delete file '%s': (%d) %s",
+	   filepath, io_last_error(), io_last_error_cstr());
+    return false;
+  }
+
+  return true;
+}
+
+IO_DEF bool io_stream_file(const char *filepath, Io_Stream_Callback callback, unsigned char *buf, size_t buf_size, void *userdata) {
+  Io_File f;
+  if(!io_file_open(&f, filepath, IO_MODE_READ)) {
+    IO_LOG("Failed to open '%s': (%d) %s",
+	   filepath, io_last_error(), io_last_error_cstr());
+    return false;
+  }
+
+  while(true) {
+    size_t read = io_file_read(&f, buf, 1, buf_size);
+    if(read == 0) {
+      break;
+    }
+
+    if(!callback(userdata, buf, read)) {
+      io_file_close(&f);
+      return false;
+    }    
+  }
+
+  io_file_close(&f);
+  return true;
+}
+
+IO_DEF bool io_create_dir(const char *dir_path, bool *_existed) {
+  if(CreateDirectory(dir_path, NULL)) {
+    if(_existed) *_existed = false;
+    return true;
+  } else {
+    bool existed = io_last_error() == ERROR_ALREADY_EXISTS;
+    if(!existed) {
+      IO_LOG("Failed to create direcory '%s': (%d) %s",
+	     dir_path, io_last_error(), io_last_error_cstr());
+      return false;
+    }
+  
+    if(_existed) *_existed = existed;    
+    return true;    
+  }
+}
+
+IO_DEF bool io_delete_dir(const char *dir_path) {
+  Io_Dir dir;
+  if(!io_dir_open(&dir, dir_path)) {
+    return true;
+  }
+
+  Io_Dir_Entry entry;
+  while(io_dir_next(&dir, &entry)) {
+
+    if(strncmp(entry.name, ".", 1) == 0 ||
+       strncmp(entry.name, "..", 2) == 0) {
+      continue;
+    }
+    
+    if(entry.is_dir) {
+      if(!io_delete_dir(entry.abs_name)) {
+	io_dir_close(&dir);
+	return false;
+      }
+    } else {
+      if(!io_delete_file(entry.abs_name)) {
+	io_dir_close(&dir);
+	IO_LOG("Failed to delete directory '%s': Can not delete file: '%s'", dir_path, entry.name);
+	return false;
+      }
+    }
+  }
+
+  io_dir_close(&dir);
+
+  if(!RemoveDirectory(dir_path)) {
+    IO_LOG("Failed to remove direcory '%s': (%d) %s",
+	   dir_path, io_last_error(), io_last_error_cstr()); 
+    return false;
+  }
+  
   return true;
 }
 
@@ -130,7 +245,6 @@ IO_DEF bool io_exists(const char *file_path, bool *is_file) {
   if(is_file) *is_file = !(attribs & FILE_ATTRIBUTE_DIRECTORY);
   return attribs != INVALID_FILE_ATTRIBUTES;
 }
-
 ////////////////////////////////////////////////////////////////////////////////////////
 
 IO_DEF bool io_dir_open(Io_Dir *dir, const char *dir_path) {
