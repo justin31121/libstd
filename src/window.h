@@ -5,12 +5,14 @@
 //   msvc : user32.lib gdi32.lib opengl32.lib (shell32.lib)
 //   mingw:
 
-#ifdef WINDOW_VERBOSE
-#  include <stdio.h>
-#  define WINDOW_LOG(...) fprintf(stderr, __VA_ARGS__);
-#else
-#  define WINDOW_LOG(...)
-#endif //WINDOW_VERBOSE
+#ifndef WINDOW_LOG
+#  ifndef WINDOW_QUIET
+#    include <stdio.h>
+#    define WINDOW_LOG(...) fprintf(stderr, "WINDOW: "__VA_ARGS__);
+#  else
+#    define WINDOW_LOG(...)
+#  endif // WINDOW QUIET
+#endif // WINDOW_LOG
 
 #include <stdbool.h>
 #include <math.h>
@@ -38,6 +40,7 @@ typedef enum{
   WINDOW_EVENT_KEYRELEASE,
   WINDOW_EVENT_MOUSEPRESS,
   WINDOW_EVENT_MOUSERELEASE,
+  WINDOW_EVENT_MOUSEWHEEL,
   WINDOW_EVENT_FILEDROP,
 }Window_Event_Type;
 
@@ -47,6 +50,7 @@ typedef struct{
   union{
     char key;
     long long value;
+    int amount;
   }as;
 }Window_Event;
 
@@ -72,11 +76,14 @@ typedef struct{
   int width, height;
 }Window;
 
+typedef struct{
+  HANDLE handle;
+}Window_Clipboard;
+
 #define WINDOW_RUNNING       0x1
 #define WINDOW_NOT_RESIZABLE 0x2
 #define WINDOW_DRAG_N_DROP   0x4
 #define WINDOW_FULLSCREEN    0x8
-
 
 WINDOW_DEF bool window_init(Window *w, int width, int height, const char *title, int flags);
 WINDOW_DEF bool window_set_vsync(Window *w, bool use_vsync);
@@ -90,6 +97,10 @@ WINDOW_DEF bool window_show_cursor(Window *w, bool show);
 WINDOW_DEF bool window_dragged_files_init(Window_Dragged_Files *files, Window_Event *event);
 WINDOW_DEF bool window_dragged_files_next(Window_Dragged_Files *files, char **path);
 WINDOW_DEF void window_dragged_files_free(Window_Dragged_Files *files);
+
+WINDOW_DEF bool window_clipboard_init(Window_Clipboard *clipboard, Window *w, char **text);
+WINDOW_DEF bool window_clipboard_set(Window *w, const char *text, size_t text_len);
+WINDOW_DEF void window_clipboard_free(Window_Clipboard *clipboard);
 
 WINDOW_DEF bool window_compile_shader(GLuint *shader, GLenum shader_type, const char *shader_source);
 WINDOW_DEF bool window_link_program(GLuint *program, GLuint vertex_shader, GLuint fragment_shader);
@@ -128,11 +139,12 @@ typedef struct{
   GLuint textures;
   unsigned int images_count;
 
-#ifdef __STB_INCLUDE_STB_TRUETYPE_H__
+#ifdef WINDOW_STB_TRUETYPE
+  float font_height;
   stbtt_bakedchar font_cdata[96]; // ASCII 32..126 is 95 glyphs
-#endif //__STB_INCLUDE_STB_TRUETYPE_H__
+#endif //WINDOW_STB_TRUETYPE
     
-  int font_index;    
+  int font_index;
   int tex_index;
 
   float width, height;
@@ -140,6 +152,12 @@ typedef struct{
 
   Window_Renderer_Vertex verticies[WINDOW_RENDERER_CAP];
   int verticies_count;
+
+  //Imgui things
+  Window_Renderer_Vec2f input;
+  Window_Renderer_Vec2f pos;
+  bool clicked;
+  bool released;
 }Window_Renderer;
 
 static Window_Renderer_Vec4f WHITE = {1, 1, 1, 1};
@@ -148,10 +166,11 @@ static Window_Renderer_Vec4f BLUE  = {0, 0, 1, 1};
 static Window_Renderer_Vec4f GREEN = {0, 1, 0, 1};
 static Window_Renderer_Vec4f BLACK = {0, 0, 0, 1};
 
-#define Vec2f Window_Renderer_Vec2f
 #define vec2f(x, y) window_renderer_vec2f((x), (y))
-#define Vec4f Window_Renderer_Vec4f
 #define vec4f(x, y, z, w) window_renderer_vec4f((x), (y), (z), (w))
+#define Vec4f Window_Renderer_Vec4f
+#define Vec2f Window_Renderer_Vec2f
+
 #define draw_triangle window_renderer_triangle
 #define draw_solid_triangle window_renderer_solid_triangle
 #define draw_solid_rect window_renderer_solid_rect
@@ -163,7 +182,11 @@ static Window_Renderer_Vec4f BLACK = {0, 0, 0, 1};
 #define draw_texture_colored window_renderer_texture_colored
 #define draw_solid_circle window_renderer_solid_circle
 
-#ifdef __STB_INCLUDE_STB_TRUETYPE_H__
+#define button window_renderer_button
+#define texture_button window_renderer_texture_button
+#define texture_button_ex window_renderer_texture_button_ex
+
+#ifdef WINDOW_STB_TRUETYPE
 #  define push_font window_renderer_push_font
 #  define draw_text(cstr, pos, factor) window_renderer_text((cstr), strlen((cstr)), (pos), (factor), (WHITE))
 #  define draw_text_colored(cstr, pos, factor, color) window_renderer_text((cstr), strlen((cstr)), (pos), (factor), (color))
@@ -172,11 +195,27 @@ static Window_Renderer_Vec4f BLACK = {0, 0, 0, 1};
 
 #  define measure_text(cstr, factor, size) window_renderer_measure_text((cstr), strlen((cstr)), (factor), (size));
 #  define measure_text_len(cstr, cstr_len, factor, size) window_renderer_measure_text((cstr), (cstr_len), (factor), (size));
-#endif //__STB_INCLUDE_STB_TRUETYPE_H__
+
+#  define draw_text_wrapped window_renderer_text_wrapped
+#endif //WINDOW_STB_TRUETYPE
+
+#ifdef WINDOW_STB_IMAGE
+#  define push_image window_renderer_push_image
+#endif //WINDOW_STB_IMAGE
 
 WINDOW_DEF bool window_renderer_init(Window_Renderer *r);
+WINDOW_DEF void window_renderer_free();
+
 WINDOW_DEF void window_renderer_begin(int width, int height);
 WINDOW_DEF void window_renderer_set_color(Window_Renderer_Vec4f color);
+WINDOW_DEF void window_renderer_end();
+
+WINDOW_DEF void window_renderer_imgui_begin(Window *w, Window_Event *e);
+WINDOW_DEF void window_renderer_imgui_update(Window *w, Window_Event *e);
+WINDOW_DEF void window_renderer_imgui_end();
+
+// Primitives
+
 WINDOW_DEF void window_renderer_vertex(Window_Renderer_Vec2f p, Window_Renderer_Vec4f c, Window_Renderer_Vec2f uv);
 WINDOW_DEF void window_renderer_triangle(Window_Renderer_Vec2f p1, Window_Renderer_Vec2f p2, Window_Renderer_Vec2f p3, Window_Renderer_Vec4f c1, Window_Renderer_Vec4f c2, Window_Renderer_Vec4f c3, Window_Renderer_Vec2f uv1, Window_Renderer_Vec2f uv2, Window_Renderer_Vec2f uv3);
 WINDOW_DEF void window_renderer_solid_triangle(Window_Renderer_Vec2f p1, Window_Renderer_Vec2f p2, Window_Renderer_Vec2f p3, Window_Renderer_Vec4f c);
@@ -189,14 +228,26 @@ WINDOW_DEF bool window_renderer_push_texture(int width, int height, const void *
 WINDOW_DEF void window_renderer_texture(unsigned int texture, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec2f uvp, Window_Renderer_Vec2f uvs);
 WINDOW_DEF void window_renderer_texture_colored(unsigned int texture, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec2f uvp, Window_Renderer_Vec2f uvs, Window_Renderer_Vec4f c);
 WINDOW_DEF void window_renderer_solid_circle(Window_Renderer_Vec2f pos, float start_angle, float end_angle, float radius, int parts, Window_Renderer_Vec4f color);
-WINDOW_DEF void window_renderer_end();
-WINDOW_DEF void window_renderer_free();
 
-#ifdef __STB_INCLUDE_STB_TRUETYPE_H__
+//Imgui-things
+WINDOW_DEF bool window_renderer_button(Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f c);
+WINDOW_DEF bool window_renderer_texture_button(unsigned int texture, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s);
+WINDOW_DEF bool window_renderer_texture_button_ex(unsigned int texture, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f c, Window_Renderer_Vec2f uvp, Window_Renderer_Vec2f uvs);
+
+WINDOW_DEF bool window_renderer_slider(Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f knot_color, Window_Renderer_Vec4f color, float value, float *cursor);
+
+#ifdef WINDOW_STB_TRUETYPE
 WINDOW_DEF bool window_renderer_push_font(const char *filepath, float pixel_height);
 WINDOW_DEF void window_renderer_measure_text(const char *cstr, size_t cstr_len, float scale, Vec2f *size);
 WINDOW_DEF void window_renderer_text(const char *cstr, size_t cstr_len, Window_Renderer_Vec2f pos, float scale, Window_Renderer_Vec4f color);
-#endif //__STB_INCLUDE_STB_TRUETYPE_H__
+WINDOW_DEF void window_renderer_text_wrapped(const char *cstr, size_t cstr_len, Window_Renderer_Vec2f *pos, Window_Renderer_Vec2f size, float scale, Window_Renderer_Vec4f color);
+
+WINDOW_DEF bool window_renderer_text_button(const char *cstr, size_t cstr_len, float scale, Window_Renderer_Vec4f text_color, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f c);
+#endif //WINDOW_STB_TRUETYPE
+
+#ifdef WINDOW_STB_IMAGE
+WINDOW_DEF bool window_renderer_push_image(const char *filepath, int *width, int *height, unsigned int *index);
+#endif //WINDOW_STB_IMAGE
 
 #endif //WINDOW_NO_RENDERER
 
@@ -450,6 +501,19 @@ WINDOW_DEF bool window_set_vsync(Window *w, bool use_vsync) {
   return wglSwapIntervalEXT(use_vsync ? 1 : 0);
 }
 
+static char window_german_keyboard[10] = {
+  [1] ='!',
+  [2] = '\"',
+  [3] = '§',
+  [4] = '$',
+  [5] = '%',
+  [6] = '&',
+  [7] = '/',
+  [8] = '(',
+  [9] = ')', 
+  [0] = '=',
+};
+
 WINDOW_DEF bool window_peek(Window *w, Window_Event *e) {
     
   MSG *msg = &e->msg;
@@ -506,26 +570,41 @@ WINDOW_DEF bool window_peek(Window *w, Window_Event *e) {
 	  }
 	  continue;
 	}
-
-
+	
 	char c = (char) msg->wParam;
-	if(!w->is_shift_down && 'A' <= c && c <= 'Z') {
-	  c += 32;
-	}	
+	if(w->is_shift_down) {
+	  if('0' <= c && c <= '9') {
+	    c = window_german_keyboard[c - '0'];
+	  }
+	} else {
+	  if('A' <= c && c <= 'Z') {
+	    c += 32;
+	  }
+	}
+	
 	e->as.key = c;
 	if(was_down) {
 	  e->type = WINDOW_EVENT_KEYRELEASE;
 	} else {
 	  e->type = WINDOW_EVENT_KEYPRESS;
 	}
-
 	
       }
       
     } break;
+    case WM_MOUSEWHEEL:
+    case WM_MOUSEHWHEEL: {
+      e->type = WINDOW_EVENT_MOUSEWHEEL; 
+      e->as.amount = GET_WHEEL_DELTA_WPARAM(msg->wParam) / 120;//apperantly this is 120`s steps
+    } break;
     default: {
     } break;
     }
+
+    
+#ifndef WINDOW_NO_RENDERER
+    window_renderer_imgui_update(w, e);
+#endif //WINDOW_NO_RENDERER
 
     if(e->type != WINDOW_EVENT_NONE) {
       return true;
@@ -548,6 +627,11 @@ WINDOW_DEF bool window_peek(Window *w, Window_Event *e) {
     / (double) w->performance_frequency.QuadPart;
   w->time = time;
 
+  //window_renderer
+#ifndef WINDOW_NO_RENDERER
+  window_renderer_imgui_begin(w, e);
+  window_renderer_begin(w->width, w->height);
+#endif // WINDOW_NO_RENDERER
 
   return false;
 }
@@ -562,7 +646,12 @@ WINDOW_DEF bool window_get_mouse_position(Window *w, int *width, int *height) {
   return false;
 }
   
-WINDOW_DEF void window_swap_buffers(Window *w) {   
+WINDOW_DEF void window_swap_buffers(Window *w) {
+#ifndef WINDOW_NO_RENDERER
+  window_renderer_end();
+  window_renderer_imgui_end();
+#endif // WINDOW_NO_RENDERER
+  
   SwapBuffers(w->dc);
 }
 
@@ -659,6 +748,74 @@ WINDOW_DEF void window_dragged_files_free(Window_Dragged_Files *files) {
   DragFinish(files->h_drop);
 }
 
+WINDOW_DEF bool window_clipboard_init(Window_Clipboard *clipboard, Window *w, char **text) {
+
+  (void) w;
+  
+  if(!OpenClipboard(w->hwnd)) {
+    return false;
+  }
+  
+  clipboard->handle = GetClipboardData(CF_TEXT);
+  if(clipboard->handle == NULL) {
+    CloseClipboard();
+    return false;
+  }
+
+  *text = GlobalLock(clipboard->handle);
+  if((*text) == NULL) {
+    CloseClipboard();
+    return false;
+  }  
+  
+  return true;
+}
+
+WINDOW_DEF bool window_clipboard_set(Window *w, const char *text, size_t text_len) {
+
+  HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, text_len + 1);
+  if(!mem) {
+    return false;
+  }
+
+  char *locked_mem = GlobalLock(mem);
+  if(!locked_mem) {
+    GlobalFree(mem);
+    return false;
+  }
+
+  memcpy(locked_mem, text, text_len);
+  locked_mem[text_len] = 0;
+  
+  GlobalUnlock(locked_mem);
+
+  if(!OpenClipboard(w->hwnd)) {
+    GlobalFree(mem);
+    return false;
+  }
+
+  if(!EmptyClipboard()) {
+    GlobalFree(mem);
+    CloseClipboard();
+    return false;
+  }
+
+  if(SetClipboardData(CF_TEXT, mem) == NULL) {
+    GlobalFree(mem);
+    CloseClipboard();
+    return false;
+  }
+
+  CloseClipboard();
+  
+  return true;		
+}
+
+WINDOW_DEF void window_clipboard_free(Window_Clipboard *clipboard) {
+  GlobalUnlock(clipboard->handle);
+  CloseClipboard();  
+}
+
 WINDOW_DEF const char *window_shader_type_name(GLenum shader) {
   switch (shader) {
   case GL_VERTEX_SHADER:
@@ -682,7 +839,7 @@ WINDOW_DEF bool window_compile_shader(GLuint *shader, GLenum shader_type, const 
     GLchar message[1024];
     GLsizei message_size = 0;
     glGetShaderInfoLog(*shader, sizeof(message), &message_size, message);
-    WINDOW_LOG("ERROR: could not compile %s\n", window_shader_type_name(shader_type));
+    WINDOW_LOG("Could not compile shader: %s\n", window_shader_type_name(shader_type));
     WINDOW_LOG("%.*s\n", message_size, message);
     return false;
   }
@@ -704,7 +861,7 @@ WINDOW_DEF bool window_link_program(GLuint *program, GLuint vertex_shader, GLuin
     GLchar message[1024];
 
     glGetProgramInfoLog(*program, sizeof(message), &message_size, message);
-    WINDOW_LOG("ERROR: Program Linking: %.*s\n", message_size, message);
+    WINDOW_LOG("Could not link program: %.*s\n", message_size, message);
     return false;
   }
   
@@ -835,9 +992,17 @@ WINDOW_DEF bool window_renderer_init(Window_Renderer *r) {
   r->images_count = 0;
   r->verticies_count = 0;
   r->font_index = -1;
+
+  window_renderer_imgui_end();
+  window_renderer.input = vec2f(-1.f, -1.f);
   
   return true;
 }
+
+WINDOW_DEF void window_renderer_free(Window_Renderer *r) {
+  (void) r;
+}
+
 
 WINDOW_DEF void window_renderer_begin(int width, int height) {
 
@@ -867,7 +1032,47 @@ WINDOW_DEF void window_renderer_begin(int width, int height) {
     glUniform1i(uniformLocation1, r->font_index);	
   }
 
-  r->tex_index = -1;
+  r->tex_index = -1;  
+}
+
+WINDOW_DEF void window_renderer_imgui_begin(Window *w, Window_Event *e) {
+
+  (void) e;
+  int x, y;
+  window_get_mouse_position(w, &x, &y);
+
+  window_renderer.pos = window_renderer_vec2f((float) x, ((float) w->height - (float) y));
+  if(window_renderer.clicked) {
+    window_renderer.input = window_renderer.pos;
+  }
+}
+
+WINDOW_DEF void window_renderer_imgui_update(Window *w, Window_Event *e) {
+  (void) w;
+  if(e->type == WINDOW_EVENT_MOUSEPRESS) {    
+    window_renderer.clicked = true;
+  } else if(e->type == WINDOW_EVENT_MOUSERELEASE) {
+    window_renderer.released = true;
+  }  
+}
+
+WINDOW_DEF void window_renderer_imgui_end(Window *w, Window_Event *e) {
+  (void) w;
+  (void) e;
+  if(window_renderer.released) {
+    window_renderer.input = vec2f(-1.f, -1.f);
+  }
+    
+  window_renderer.clicked = false;
+  window_renderer.released = false;
+}
+
+WINDOW_DEF void window_renderer_end() {
+  Window_Renderer *r = &window_renderer;
+  
+  glBufferSubData(GL_ARRAY_BUFFER, 0, r->verticies_count * sizeof(Window_Renderer_Vertex), r->verticies);
+  glDrawArrays(GL_TRIANGLES, 0, r->verticies_count);
+  r->verticies_count = 0;
 }
 
 WINDOW_DEF void window_renderer_set_color(Window_Renderer_Vec4f color) {
@@ -969,7 +1174,77 @@ WINDOW_DEF void window_renderer_solid_rounded_rect(Vec2f pos, Vec2f size, float 
 		    0, PI /2,
 		    radius,
 		    parts,
-		    color);  
+		    color);
+}
+
+WINDOW_DEF bool window_renderer_button_impl(Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f *c) {
+  Window_Renderer_Vec2f pos = window_renderer.input;
+  bool holding =
+    p.x <= pos.x &&
+    (pos.x - p.x) <= s.x &&
+    p.y <= pos.y &&
+    (pos.y - p.y) <= s.y;
+  if(holding) {
+    c->w *= .5;
+  }
+  return holding;
+}
+
+WINDOW_DEF bool window_renderer_button(Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f c) {
+  bool holding = window_renderer_button_impl(p, s, &c);
+  window_renderer_solid_rect(p, s, c);
+  return window_renderer.released && holding;
+}
+
+WINDOW_DEF bool window_renderer_texture_button(unsigned int texture, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s) {
+  Window_Renderer_Vec4f c = vec4f(1, 1, 1, 1);
+  bool holding = window_renderer_button_impl(p, s, &c);
+  window_renderer_texture_colored(texture, p, s, vec2f(0, 0), vec2f(1, 1), c);
+  return window_renderer.released && holding;
+}
+
+WINDOW_DEF bool window_renderer_texture_button_ex(unsigned int texture, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f c, Window_Renderer_Vec2f uvp, Window_Renderer_Vec2f uvs) {
+  bool holding = window_renderer_button_impl(p, s, &c);
+  window_renderer_texture_colored(texture, p, s, uvp, uvs, c);
+  return window_renderer.released && holding;
+}
+
+WINDOW_DEF bool window_renderer_slider(Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f knot_color, Window_Renderer_Vec4f color, float value, float *cursor) {
+  
+  Window_Renderer_Vec2f cursor_pos = vec2f(p.x + s.x * value, p.y + s.y/2);
+  float cursor_radius = s.y * 1.125f;
+  *cursor = value;
+
+  Window_Renderer_Vec2f input = window_renderer.input;
+  float dx = input.x - cursor_pos.x;
+  float dy = input.y - cursor_pos.y;
+  bool knot_clicked = ((dx * dx) + (dy *dy)) <= (cursor_radius * cursor_radius);
+
+  if(knot_clicked) {
+    cursor_pos.x = window_renderer.pos.x;
+    if((cursor_pos.x - p.x) < 0) cursor_pos.x = p.x;
+    if(s.x < (cursor_pos.x - p.x)) cursor_pos.x = p.x + s.x;
+    *cursor = (cursor_pos.x - p.x) / s.x;
+  }
+  
+  window_renderer_solid_rect(p, vec2f(cursor_pos.x - p.x, s.y), knot_color);
+  window_renderer_solid_rect(vec2f(cursor_pos.x, p.y), vec2f(s.x - cursor_pos.x + p.x, s.y), color);
+  window_renderer_solid_circle(cursor_pos, 0, 2 * PI, cursor_radius, 20, knot_color);
+
+  bool clicked =
+    p.x <= input.x &&
+    (input.x - p.x) <= s.x&&
+    p.y <= input.y &&
+    (input.y - p.y) <= s.y;    
+  if(window_renderer.released && knot_clicked) {    
+    return true;
+  }
+  if(window_renderer.clicked && clicked) {
+    *cursor = (window_renderer.input.x - p.x) / s.x;
+    return true;
+  }
+
+  return false;
 }
 
 WINDOW_DEF void window_renderer_solid_rounded_shaded_rect(Window_Renderer_Vec2f pos,
@@ -980,7 +1255,7 @@ WINDOW_DEF void window_renderer_solid_rounded_shaded_rect(Window_Renderer_Vec2f 
 							  Window_Renderer_Vec4f color) {
   window_renderer_solid_rounded_rect(vec2f(pos.x - shade_px, pos.y - shade_px),
 				     vec2f(size.x + 2 *shade_px, size.y + 2 *shade_px),
-				     radius, parts, vec4f(0, 0, 0, color.w * .5));
+				     radius, parts, vec4f(0, 0, 0, color.w * .5f));
   window_renderer_solid_rounded_rect(pos, size, radius, parts, color);
 }
 
@@ -1151,55 +1426,41 @@ WINDOW_DEF bool window_renderer_push_texture(int width, int height, const void *
   return true;
 }
 
-WINDOW_DEF void window_renderer_end() {
-
-  Window_Renderer *r = &window_renderer;
-  
-  glBufferSubData(GL_ARRAY_BUFFER, 0, r->verticies_count * sizeof(Window_Renderer_Vertex), r->verticies);
-  glDrawArrays(GL_TRIANGLES, 0, r->verticies_count);
-  r->verticies_count = 0;
-}
-
-WINDOW_DEF void window_renderer_free(Window_Renderer *r) {
-  (void) r;
-}
-
-#ifdef __STB_INCLUDE_STB_TRUETYPE_H__
+#ifdef WINDOW_STB_TRUETYPE
 #include <stdio.h>
 
 #define WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE 1024
 
 WINDOW_DEF bool window_renderer_push_font(const char *filepath, float pixel_height) {
 
-
   FILE *f = fopen(filepath, "rb");
   if(!f) {
-    WINDOW_LOG("ERROR: Can not open file: %s\n", filepath);
+    WINDOW_LOG("Can not open file: %s\n", filepath);
     return false;
   }
 
   if(fseek(f, 0, SEEK_END) < 0) {
-    WINDOW_LOG("ERROR: Can not seek in file: %s\n", filepath);
+    WINDOW_LOG("Can not seek in file: %s\n", filepath);
     fclose(f);
     return false;
   }
 
   long m = ftell(f);
   if(m < 0) {
-    WINDOW_LOG("ERROR: Can not read file(ftell): %s\n", filepath);
+    WINDOW_LOG("Can not read file(ftell): %s\n", filepath);
     fclose(f);
     return false;
   }  
 
   if(fseek(f, 0, SEEK_SET) < 0) {
-    WINDOW_LOG("ERROR: Can not seek in file: %s\n", filepath);
+    WINDOW_LOG("Can not seek in file: %s\n", filepath);
     fclose(f);
     return false;
   }
 
   unsigned char *buffer = (unsigned char *) malloc((size_t) m);
   if(!buffer) {
-    WINDOW_LOG("ERROR: Can not allocate enough memory\n");
+    WINDOW_LOG("Can not allocate enough memory\n");
     fclose(f);
     return false;
   }
@@ -1207,7 +1468,7 @@ WINDOW_DEF bool window_renderer_push_font(const char *filepath, float pixel_heig
   size_t _m = (size_t) m;
   size_t n = fread(buffer, 1, _m, f);
   if(n != _m) {
-    WINDOW_LOG("ERROR: Failed to read file(fread): %s\n", filepath);
+    WINDOW_LOG("Failed to read file(fread): %s\n", filepath);
     free(buffer);
     fclose(f);
     return false;
@@ -1229,6 +1490,7 @@ WINDOW_DEF bool window_renderer_push_font(const char *filepath, float pixel_heig
   bool result = push_texture(1024, 1024, temp_bitmap, true, &tex);
 
   r->font_index = (int) tex;
+  r->font_height = pixel_height;
 
   free(buffer);
   free(temp_bitmap);
@@ -1278,8 +1540,48 @@ WINDOW_DEF void window_renderer_text(const char *cstr, size_t cstr_len, Window_R
 
 }
 
+WINDOW_DEF void window_renderer_text_wrapped(const char *cstr, size_t cstr_len, Window_Renderer_Vec2f *pos, Window_Renderer_Vec2f size, float scale, Window_Renderer_Vec4f color) {
+  Window_Renderer *r = &window_renderer;
+  Vec2f text_size;
+  
+  size_t i = 0;
+  while(i < cstr_len) {
+    size_t j=1;
+    for(;j<cstr_len - i;j++) {
+      measure_text_len(cstr + i, j, scale, &text_size);
+      if(text_size.x >= size.x) break;
+    }
+
+    draw_text_len_colored(cstr + i, j, *pos, scale, color);
+    i += j;
+    pos->y -= r->font_height;    
+  }
+}
+
+WINDOW_DEF bool window_renderer_text_button(const char *cstr, size_t cstr_len, float scale, Window_Renderer_Vec4f text_color, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f c) {
+  bool holding = window_renderer_button_impl(p, s, &c);
+  window_renderer_solid_rect(p, s, c);
+  if(holding) {
+    text_color.w *= .5;
+  }
+
+  Vec2f size;
+  window_renderer_measure_text(cstr, cstr_len, scale, &size);
+
+  if(size.x <= s.x && size.y <= s.y) {
+    Vec2f pos = vec2f(p.x + s.x / 2 - size.x / 2,
+		      p.y + s.y / 2 - size.y / 2);
+    window_renderer_text(cstr, cstr_len, pos, scale, text_color);
+  }
+  
+  return window_renderer.released && holding;
+}
+
 WINDOW_DEF void window_renderer_measure_text(const char *cstr, size_t cstr_len, float factor, Vec2f *size) {
   Window_Renderer *r = &window_renderer;
+
+  float hi = 0;
+  float lo = 0;
 
   size->y = 0;
   size->x = 0;
@@ -1293,8 +1595,6 @@ WINDOW_DEF void window_renderer_measure_text(const char *cstr, size_t cstr_len, 
       continue;
     }
 
-    float _y = y;
-
     stbtt_aligned_quad q;
     stbtt_GetBakedQuad(r->font_cdata,
 		       WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE,
@@ -1303,13 +1603,31 @@ WINDOW_DEF void window_renderer_measure_text(const char *cstr, size_t cstr_len, 
 
     size->x = q.y1 - q.y0;
     float height = q.x1 - q.x0;
-    if(height > size->y) size->y = height;
+    if(height > hi) hi = height;
+    if(height < lo) lo = height;
   }
-  size->x = x * factor;
-  size->y *= factor;
+  size->x = x * factor;  
+  size->y = (hi - lo) * factor;
 }
 
-#endif //__STB_INCLUDE_STB_TRUETYPE_H__
+#endif //WINDOW_STB_TRUETYPE
+
+#ifdef WINDOW_STB_IMAGE
+
+WINDOW_DEF bool window_renderer_push_image(const char *filepath, int *width, int *height, unsigned int *index) {
+
+  unsigned char *image_data  = stbi_load(filepath, width, height, NULL, 4);
+  if(image_data == NULL)  {
+    return false;
+  }
+
+  bool result = window_renderer_push_texture(*width, *height, image_data, false, index);
+  stbi_image_free(image_data);
+
+  return result;
+}
+
+#endif // WINDOW_STB_IMAGE
 
 #endif //WINDOW_NO_RENDERER
 

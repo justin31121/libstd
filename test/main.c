@@ -1,6 +1,6 @@
 
 #define LIBSTD_IMPLEMENTATION
-#define DECODER_DISABLE
+#define HTTP_DISABLE
 #include "../libstd.h"
 
 int main() {
