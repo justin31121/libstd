@@ -1,7 +1,27 @@
 #ifndef LIBSTD_H
 #define LIBSTD_H
 
+// #define MINIZ_ENABLE
+// #define STB_IMAGE_ENABLE
+// #define STB_TRUETYPE_ENABLE
+// #define AUDIO_ENABLE
+// #define DECODER_ENABLE
+// #define EBML_ENABLE
+// #define HTTP_ENABLE
+// #define IO_ENABLE
+// #define MF_DECODER_ENABLE
+// #define MP4_ENABLE
+// #define SPECTRUM_ENABLE
+// #define STRING_ENABLE
+// #define THREAD_ENABLE
+// #define TYPES_ENABLE
+// #define WAV_ENABLE
+// #define WINDOW_ENABLE
+
 #ifdef LIBSTD_IMPLEMENTATION
+#  define MINIZ_IMPLEMENTATION
+#  define STB_IMAGE_IMPLEMENTATION
+#  define STB_TRUETYPE_IMPLEMENTATION
 #  define AUDIO_IMPLEMENTATION
 #  define DECODER_IMPLEMENTATION
 #  define EBML_IMPLEMENTATION
@@ -15,76 +35,12 @@
 #  define TYPES_IMPLEMENTATION
 #  define WAV_IMPLEMENTATION
 #  define WINDOW_IMPLEMENTATION
-#  define MINIZ_IMPLEMENTATION
-#  define STB_IMAGE_IMPLEMENTATION
-#  define STB_TRUETYPE_IMPLEMENTATION
 #endif // LIBSTD_IMPLEMENTATION
 
-#ifdef AUDIO_DISABLE
-#  define AUDIO_H
-#endif // AUDIO_DISABLE
-
-#ifdef DECODER_DISABLE
-#  define DECODER_H
-#endif // DECODER_DISABLE
-
-#ifdef EBML_DISABLE
-#  define EBML_H
-#endif // EBML_DISABLE
-
-#ifdef HTTP_DISABLE
-#  define HTTP_H
-#endif // HTTP_DISABLE
-
-#ifdef IO_DISABLE
-#  define IO_H
-#endif // IO_DISABLE
-
-#ifdef MF_DECODER_DISABLE
-#  define MF_DECODER_H
-#endif // MF_DECODER_DISABLE
-
-#ifdef MP4_DISABLE
-#  define MP4_H
-#endif // MP4_DISABLE
-
-#ifdef SPECTRUM_DISABLE
-#  define SPECTRUM_H
-#endif // SPECTRUM_DISABLE
-
-#ifdef STRING_DISABLE
-#  define STRING_H
-#endif // STRING_DISABLE
-
-#ifdef THREAD_DISABLE
-#  define THREAD_H
-#endif // THREAD_DISABLE
-
-#ifdef TYPES_DISABLE
-#  define TYPES_H
-#endif // TYPES_DISABLE
-
-#ifdef WAV_DISABLE
-#  define WAV_H
-#endif // WAV_DISABLE
-
-#ifdef WINDOW_DISABLE
-#  define WINDOW_H
-#endif // WINDOW_DISABLE
-
-#ifdef MINIZ_DISABLE
-#  define MINIZ_H
-#endif // MINIZ_DISABLE
-
-#ifdef STB_IMAGE_DISABLE
-#  define STB_IMAGE_H
-#endif // STB_IMAGE_DISABLE
-
-#ifdef STB_TRUETYPE_DISABLE
-#  define STB_TRUETYPE_H
-#endif // STB_TRUETYPE_DISABLE
-
 #ifdef LIBSTD_DEF
+#  define MINIZ_DEF LIBSTD_DEF
+#  define STB_IMAGE_DEF LIBSTD_DEF
+#  define STB_TRUETYPE_DEF LIBSTD_DEF
 #  define AUDIO_DEF LIBSTD_DEF
 #  define DECODER_DEF LIBSTD_DEF
 #  define EBML_DEF LIBSTD_DEF
@@ -98,6210 +54,10 @@
 #  define TYPES_DEF LIBSTD_DEF
 #  define WAV_DEF LIBSTD_DEF
 #  define WINDOW_DEF LIBSTD_DEF
-#  define MINIZ_DEF LIBSTD_DEF
-#  define STB_IMAGE_DEF LIBSTD_DEF
-#  define STB_TRUETYPE_DEF LIBSTD_DEF
 #endif // LIBSTD_DEF
 
-#ifndef AUDIO_H
-#define AUDIO_H
+#ifdef MINIZ_ENABLE
 
-// win32
-//   mingw: -lole32 -lxaudio2_8
-//   msvc : ole32.lib
-
-// linux
-//   gcc  : -lasound
-
-#include <stdbool.h>
-#ifdef _WIN32
-#  include <xaudio2.h>
-#elif linux
-#  include <alsa/asoundlib.h>
-#endif //_WIN32
-
-#ifndef AUDIO_DEF
-#  define AUDIO_DEF static inline
-#endif //AUDIO_DEF
-
-typedef enum{
-    AUDIO_FMT_S16,
-    AUDIO_FMT_FLT,
-}Audio_Fmt;
-
-typedef struct{
-    int channels;
-    int sample_rate;
-    int sample_size;
-
-#ifdef _WIN32
-    IXAudio2SourceVoice *xaudio2_source_voice;
-    HANDLE semaphore;
-#elif linux
-    snd_pcm_t *alsa_snd_pcm;
-#endif
-}Audio;
-
-// Public
-AUDIO_DEF bool audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_rate);
-AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, int samples);
-//AUDIO_DEF void audio_play_async(Audio *audio, unsigned char *data, int samples);
-AUDIO_DEF void audio_block(Audio *audio);
-AUDIO_DEF void audio_free(Audio *audio);
-
-AUDIO_DEF bool audio_fmt_bits_per_sample(int *bits, Audio_Fmt fmt);
-
-// Private
-
-#ifdef AUDIO_IMPLEMENTATION
-
-#ifdef _WIN32
-
-static bool audio_co_initialized = false;
-static IXAudio2* audio_xaudio2 = NULL;
-static IXAudio2MasteringVoice *audio_xaudio2_mastering_voice = NULL;
-
-AUDIO_DEF void audio_xaudio2_OnBufferEnd(IXAudio2VoiceCallback* This, void* pBufferContext);
-AUDIO_DEF void audio_xaudio2_OnStreamEnd(IXAudio2VoiceCallback* This);
-AUDIO_DEF void audio_xaudio2_OnVoiceProcessingPassEnd(IXAudio2VoiceCallback* This);
-AUDIO_DEF void audio_xaudio2_OnVoiceProcessingPassStart(IXAudio2VoiceCallback* This, UINT32 SamplesRequired);
-AUDIO_DEF void audio_xaudio2_OnBufferStart(IXAudio2VoiceCallback* This, void* pBufferContext);
-AUDIO_DEF void audio_xaudio2_OnLoopEnd(IXAudio2VoiceCallback* This, void* pBufferContext);
-AUDIO_DEF void audio_xaudio2_OnVoiceError(IXAudio2VoiceCallback* This, void* pBufferContext, HRESULT Error);
-
-static IXAudio2VoiceCallback audio_xaudio2_callbacks = {
-    .lpVtbl = &(IXAudio2VoiceCallbackVtbl) {
-	.OnStreamEnd = audio_xaudio2_OnStreamEnd,
-	.OnVoiceProcessingPassEnd = audio_xaudio2_OnVoiceProcessingPassEnd,
-	.OnVoiceProcessingPassStart = audio_xaudio2_OnVoiceProcessingPassStart,
-	.OnBufferEnd = audio_xaudio2_OnBufferEnd,
-	.OnBufferStart = audio_xaudio2_OnBufferStart,
-	.OnLoopEnd = audio_xaudio2_OnLoopEnd,
-	.OnVoiceError = audio_xaudio2_OnVoiceError,
-    }
-};
-
-AUDIO_DEF bool audio_fmt_format_tag(int *tag, Audio_Fmt fmt) {
-    switch(fmt) {
-    case AUDIO_FMT_S16: {
-	*tag = WAVE_FORMAT_PCM;
-	return true;
-    } break;
-    case AUDIO_FMT_FLT: {
-	*tag = WAVE_FORMAT_IEEE_FLOAT;
-	return true;
-    } break;
-    default: {
-	return false;	
-    } break;
-    }
-}
-
-AUDIO_DEF bool audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_rate) {    
-    audio->sample_rate = sample_rate;
-    audio->channels    = channels;
-
-    int bits_per_sample;
-    if(!audio_fmt_bits_per_sample(&bits_per_sample, fmt)) {
-	return false;
-    }
-    int format_tag;
-    if(!audio_fmt_format_tag(&format_tag, fmt)) {
-	return false;
-    }
-    audio->sample_size = bits_per_sample * channels / 8;
-
-    if( !audio_co_initialized ) {
-	if( FAILED(CoInitializeEx(NULL, COINIT_MULTITHREADED)) ) {
-	    return false;
-	}
-	audio_co_initialized = true;
-    } 
-
-    if( !audio_xaudio2 &&
-	FAILED(XAudio2Create(&audio_xaudio2, 0, XAUDIO2_DEFAULT_PROCESSOR)) ) {
-	return false;
-    }
-
-    if(!audio_xaudio2_mastering_voice &&
-       FAILED(audio_xaudio2->lpVtbl->
-	      CreateMasteringVoice(audio_xaudio2,
-				   &audio_xaudio2_mastering_voice,
-				   channels,
-				   sample_rate,
-				   0,
-				   0,
-				   NULL,
-				   AudioCategory_GameEffects)) ) {
-	return false;
-    }
-
-    WAVEFORMATEX wave_format;
-    wave_format.wFormatTag = (WORD) format_tag;
-    wave_format.nChannels = (WORD) channels;
-    wave_format.nSamplesPerSec = sample_rate;
-    wave_format.wBitsPerSample = (WORD) bits_per_sample;
-    wave_format.nBlockAlign = (wave_format.nChannels * wave_format.wBitsPerSample) / 8;
-    wave_format.nAvgBytesPerSec = wave_format.nSamplesPerSec * wave_format.nBlockAlign;
-    wave_format.cbSize = 0;
-    audio->xaudio2_source_voice = NULL;
-    if( FAILED(audio_xaudio2->lpVtbl->
-	       CreateSourceVoice(audio_xaudio2,
-				 &audio->xaudio2_source_voice,
-				 &wave_format,
-				 0,
-				 1.f,
-				 &audio_xaudio2_callbacks,
-				 NULL,
-				 NULL)) ) {
-	return false;
-    }
-
-    audio->xaudio2_source_voice->lpVtbl->Start(audio->xaudio2_source_voice, 0, XAUDIO2_COMMIT_NOW);    
-    audio->semaphore = CreateSemaphore(NULL, 0, 1, NULL);
-    ReleaseSemaphore(audio->semaphore, 1, NULL);
-    
-    if(GetLastError() == ERROR_ALREADY_EXISTS) {
-	return false;
-    }
-    
-    return true;
-}
-
-AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, int samples) {
-    XAUDIO2_BUFFER xaudioBuffer = {0};
-  
-    xaudioBuffer.AudioBytes = samples * audio->sample_size;
-    xaudioBuffer.pAudioData = data;
-    xaudioBuffer.pContext = audio;
-    
-    audio->xaudio2_source_voice->lpVtbl->SubmitSourceBuffer(audio->xaudio2_source_voice, &xaudioBuffer, NULL);
-
-    WaitForSingleObject((audio)->semaphore, INFINITE);
-}
-
-AUDIO_DEF void audio_play_async(Audio *audio, unsigned char *data, int samples) {
-    XAUDIO2_BUFFER xaudioBuffer = {0};
-  
-    xaudioBuffer.AudioBytes = samples * audio->sample_size;
-    xaudioBuffer.pAudioData = data;
-    xaudioBuffer.pContext = audio;
-    
-    audio->xaudio2_source_voice->lpVtbl->SubmitSourceBuffer(audio->xaudio2_source_voice, &xaudioBuffer, NULL);
-}
-
-AUDIO_DEF void audio_block(Audio *audio) {
-    while(1) {
-	Sleep(10);
-	DWORD result = WaitForSingleObject(audio->semaphore, 0);
-	if(result == WAIT_OBJECT_0) {
-	    return;
-	}
-    }
-}
-
-AUDIO_DEF void audio_free(Audio *audio) {
-    audio->xaudio2_source_voice->lpVtbl->Stop(audio->xaudio2_source_voice, 0, 0);
-    audio->xaudio2_source_voice->lpVtbl->DestroyVoice(audio->xaudio2_source_voice);
-    CloseHandle(audio->semaphore);
-}
-
-AUDIO_DEF void audio_xaudio2_OnBufferEnd(IXAudio2VoiceCallback* This, void* pBufferContext) {
-    (void) This;
-    Audio *audio = (Audio *) pBufferContext;
-    ReleaseSemaphore(audio->semaphore, 1, NULL);
-}
-AUDIO_DEF void audio_xaudio2_OnBufferStart(IXAudio2VoiceCallback* This, void* pBufferContext) { (void) This; (void) pBufferContext; }
-AUDIO_DEF void audio_xaudio2_OnStreamEnd(IXAudio2VoiceCallback* This) { (void) This; }
-AUDIO_DEF void audio_xaudio2_OnVoiceProcessingPassEnd(IXAudio2VoiceCallback* This) { (void) This; }
-AUDIO_DEF void audio_xaudio2_OnVoiceProcessingPassStart(IXAudio2VoiceCallback* This, UINT32 SamplesRequired) { (void) This; (void) SamplesRequired; }
-AUDIO_DEF void audio_xaudio2_OnLoopEnd(IXAudio2VoiceCallback* This, void* pBufferContext) { (void) This; (void) pBufferContext; }
-AUDIO_DEF void audio_xaudio2_OnVoiceError(IXAudio2VoiceCallback* This, void* pBufferContext, HRESULT Error) { (void) This; (void) pBufferContext, (void) Error; }
-
-#elif linux
-
-AUDIO_DEF bool audio_fmt_pcm_format(snd_pcm_format_t *format, Audio_Fmt fmt) {
-  switch(fmt) {
-  case AUDIO_FMT_S16: {
-    *format = SND_PCM_FORMAT_S16_LE;
-    return true;
-  } break;
-  default: {
-    return false;
-  } break;
-  }
-}
-
-AUDIO_DEF bool audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_rate) {
-  if(snd_pcm_open(&audio->alsa_snd_pcm, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
-    return false;
-  }
-
-  int bits_per_sample;
-  if(!audio_fmt_bits_per_sample(&bits_per_sample, fmt)) {
-    return false;
-  }
-  audio->sample_size = bits_per_sample * channels / 8;
-
-  snd_pcm_format_t snd_pcm_format;
-  if(!audio_fmt_pcm_format(&snd_pcm_format, fmt)) {
-    return false;
-  }
-  
-  if(snd_pcm_set_params(audio->alsa_snd_pcm,
-		        snd_pcm_format,
-			SND_PCM_ACCESS_RW_INTERLEAVED,
-			channels,
-			sample_rate,
-			0,
-			sample_rate / 4) < 0) {
-    return false;
-  }
-  snd_pcm_uframes_t buffer_size = 0;
-  snd_pcm_uframes_t period_size = 0;
-  if(snd_pcm_get_params(audio->alsa_snd_pcm, &buffer_size, &period_size) < 0) {
-    return false;
-  }
-  snd_pcm_prepare(audio->alsa_snd_pcm);
-
-  return true;  
-}
-
-AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, int samples) {
-
-  while(samples > 0) {
-    int ret = snd_pcm_writei(audio->alsa_snd_pcm, data, samples);
-    if(ret <= 0) {
-      snd_pcm_recover(audio->alsa_snd_pcm, ret, 1);
-      //snd_pcm_prepare(audio->device);
-    } else {
-      samples -= ret;
-    }
-  }
-
-}
-
-AUDIO_DEF void audio_free(Audio *audio) {
-  snd_pcm_drain(audio->alsa_snd_pcm);
-  snd_pcm_close(audio->alsa_snd_pcm);
-  audio->alsa_snd_pcm = NULL;
-}
-
-AUDIO_DEF void audio_block(Audio *audio) {
-
-  (void) audio;
-  // alsa by default blocks the execution, unlike xaudio2
-
-}
-
-#endif //_WIN32
-
-AUDIO_DEF bool audio_fmt_bits_per_sample(int *bits, Audio_Fmt fmt) {
-    switch(fmt) {
-    case AUDIO_FMT_S16: {
-	*bits = 16;
-	return true;
-    } break;
-    case AUDIO_FMT_FLT: {
-	*bits = 32;
-	return true;
-    } break;
-    default: {
-	return false;	
-    } break;
-    }
-}
-
-#endif //AUDIO_IMPLEMENTATION
-
-#endif //AUDIO_H
-#ifndef DECODER_H
-#define DECODER_H
-
-// TODO: implement seeking / seeking-api
-// TODO: Maybe add decoder_url_read / decoder_url_seek
-
-// win32
-//   mingw: -lavformat -lavcodec -lavutil -lswresample
-//   msvc : avformat.lib avcodec.lib avutil.lib swresample.lib
-
-// linux
-//   gcc  : -lavformat -lavcodec -lavutil -lswresample
-
-#include <stdbool.h>
-
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavutil/channel_layout.h>
-#include <libavutil/opt.h>
-#include <libswresample/swresample.h>
-
-#ifndef DECODER_DEF
-#  define DECODER_DEF static inline
-#endif //DECODER_DEF
-
-typedef enum {
-  DECODER_FMT_NONE = 0,
-  DECODER_FMT_U8,
-  DECODER_FMT_S16,
-  DECODER_FMT_S32,
-  DECODER_FMT_FLT,
-  DECODER_FMT_DBL,
-  DECODER_FMT_U8P,
-  DECODER_FMT_S16P,
-  DECODER_FMT_S32P,
-  DECODER_FMT_FLTP,
-  DECODER_FMT_DBLP,
-}Decoder_Fmt;
-
-typedef struct Decoder Decoder;
-
-typedef int (*Decoder_Read)(void *opaque, uint8_t* buffer, int buffer_size);
-typedef int64_t (*Decoder_Seek)(void *opaque, int64_t offset, int whence);
-
-typedef struct{
-  const unsigned char *data;
-  uint64_t size;
-  uint64_t pos;
-}Decoder_Memory;
-
-struct Decoder{
-  AVIOContext *av_io_context;    
-  AVFormatContext *av_format_context;
-  AVCodecContext *av_codec_context;
-  SwrContext *swr_context;
-  int stream_index;
-
-  AVPacket *packet;
-  AVFrame *frame;
-  int64_t pts;
-
-  float volume;
-  float target_volume;
-
-  int samples;
-  int sample_size;
-
-  bool continue_receive;
-  bool continue_convert;
-};
-
-// Public
-DECODER_DEF bool decoder_slurp(Decoder_Read read,
-			       Decoder_Seek seek,
-			       void *opaque,
-			       Decoder_Fmt fmt,
-			       float volume,
-			       int *channels,
-			       int *sample_rate,
-			       unsigned char **samples,
-			       unsigned int *samples_count);
-
-DECODER_DEF bool decoder_slurp_file(const char *filepath,
-				    Decoder_Fmt fmt,
-				    float volume,
-				    int *channels,
-				    int *sample_rate,
-				    unsigned char **samples,
-				    unsigned int *samples_count);
-
-DECODER_DEF bool decoder_slurp_memory(const char *memory,
-				      size_t memory_len,
-				      Decoder_Fmt fmt,
-				      float volume,
-				      int *channels,
-				      int *sample_rate,
-				      unsigned char **samples,
-				      unsigned int *samples_count);
-
-DECODER_DEF bool decoder_init(Decoder *decoder,
-			      Decoder_Read read,
-			      Decoder_Seek seek,
-			      void *opaque,
-			      Decoder_Fmt fmt,
-			      float volume,
-			      int samples,
-			      int *channels,
-			      int *sample_rate);
-DECODER_DEF bool decoder_decode(Decoder *decoder, int *out_samples, unsigned char *out_buf);
-DECODER_DEF void decoder_free(Decoder *decoder);
-DECODER_DEF bool decoder_fmt_to_bits_per_sample(int *bits, Decoder_Fmt fmt);
-DECODER_DEF bool decoder_fmt_to_libav_fmt(enum AVSampleFormat *av_fmt, Decoder_Fmt fmt);
-
-// Protected
-DECODER_DEF int64_t decoder_file_seek(void *opaque, int64_t offset, int whence);
-DECODER_DEF int decoder_file_read(void *opaque, uint8_t *buf, int _buf_size);
-  
-DECODER_DEF int64_t decoder_memory_seek(void *opaque, int64_t offset, int whence);
-DECODER_DEF int decoder_memory_read(void *opaque, uint8_t *buf, int _buf_size);
-
-#ifdef DECODER_IMPLEMENTATION
-
-DECODER_DEF bool decoder_slurp_memory(const char *memory,
-				      size_t memory_len,
-				      Decoder_Fmt fmt,
-				      float volume,
-				      int *channels,
-				      int *sample_rate,
-				      unsigned char **out_samples,
-				      unsigned int *out_samples_count) {
-  Decoder_Memory mem = {
-    .data = (const unsigned char *) memory,
-    .pos = 0,
-    .size = memory_len,
-  };
-
-  return decoder_slurp(decoder_memory_read,
-		       decoder_memory_seek,
-		       &mem,
-		       fmt,
-		       volume,
-		       channels,
-		       sample_rate,
-		       out_samples,
-		       out_samples_count);
-
-}
-
-DECODER_DEF bool decoder_slurp_file(const char *filepath,
-				    Decoder_Fmt fmt,
-				    float volume,
-				    int *channels,
-				    int *sample_rate,
-				    unsigned char **out_samples,
-				    unsigned int *out_samples_count) {
-  FILE *f = fopen(filepath, "rb");
-  if(!f) {
-    return false;
-  }
-  
-  if(!decoder_slurp(decoder_file_read,
-		    decoder_file_seek,
-		    f,
-		    fmt,
-		    volume,
-		    channels,
-		    sample_rate,
-		    out_samples,
-		    out_samples_count)) {
-    fclose(f);
-    return false;
-  }
-
-  fclose(f);
-  return true;
-}
-
-DECODER_DEF bool decoder_slurp(Decoder_Read read,
-			       Decoder_Seek seek,
-			       void *opaque,
-			       Decoder_Fmt fmt,
-			       float volume,
-			       int *channels,
-			       int *sample_rate,
-			       unsigned char **out_samples,
-			       unsigned int *out_samples_count) {
-  Decoder decoder;
-  if(!decoder_init(&decoder, read, seek, opaque,
-		   fmt, 1152, volume, channels, sample_rate)) {
-    return false;
-  }
-
-  unsigned int samples_count = 0;
-  unsigned int samples_cap = 5 * (*sample_rate) * (*channels);
-  unsigned char *samples = malloc(samples_cap * decoder.sample_size);
-  if(!samples) {
-    decoder_free(&decoder);
-    return false;
-  }
-
-  unsigned char decoded_samples[1152 * 4];
-  int decoded_samples_count;
-  while(decoder_decode(&decoder, &decoded_samples_count, decoded_samples)) {
-
-    unsigned int new_samples_cap = samples_cap;
-    while(samples_count + decoded_samples_count > new_samples_cap) {
-      new_samples_cap *= 2;
-    }
-    if(new_samples_cap != samples_cap) {
-      samples_cap = new_samples_cap;
-      samples = realloc(samples, samples_cap * decoder.sample_size);
-      if(!samples) {
-	decoder_free(&decoder);
-	return false;
-      }
-    }
-    
-    memcpy(samples + samples_count * decoder.sample_size,
-	   decoded_samples,
-	   decoded_samples_count * decoder.sample_size);
-
-    samples_count += (unsigned int) decoded_samples_count;
-  }
-
-  *out_samples = samples;
-  *out_samples_count = samples_count;
-
-  decoder_free(&decoder);  
-  return true;
-}
-
-DECODER_DEF bool decoder_init(Decoder *decoder,
-			      Decoder_Read read,
-			      Decoder_Seek seek,
-			      void *opaque,
-			      Decoder_Fmt fmt,
-			      float volume,
-			      int samples,
-			      int *channels,
-			      int *sample_rate) {
-
-  decoder->av_io_context = NULL;
-  decoder->av_format_context = NULL;
-  decoder->av_codec_context = NULL;
-  decoder->swr_context = NULL;
-  decoder->packet = NULL;
-  decoder->frame = NULL;
-  decoder->target_volume = -1.f;
-  decoder->volume = volume;
-
-  decoder->samples = samples;
-  enum AVSampleFormat av_sample_format;
-  if(!decoder_fmt_to_libav_fmt(&av_sample_format, fmt)) {
-      return false;
-  }
-
-  decoder->av_io_context = avio_alloc_context(NULL, 0, 0, opaque, read, NULL, seek);
-  if(!decoder->av_io_context) {
-    decoder_free(decoder);
-    return false;
-  }
-
-  decoder->av_format_context = avformat_alloc_context();
-  if(!decoder->av_format_context) {
-    decoder_free(decoder);
-    return false;
-  }
-
-  decoder->av_format_context->pb = decoder->av_io_context;
-  decoder->av_format_context->flags = AVFMT_FLAG_CUSTOM_IO;
-  if (avformat_open_input(&decoder->av_format_context, "", NULL, NULL) != 0) {
-    decoder_free(decoder);
-    return false;
-  }
-
-  if(avformat_find_stream_info(decoder->av_format_context, NULL) < 0) {
-    decoder_free(decoder);
-    return false;
-  }
-
-  decoder->stream_index = -1;
-
-  const AVCodec *av_codec = NULL;
-  AVCodecParameters *av_codec_parameters = NULL;
-  for(size_t i=0;i<decoder->av_format_context->nb_streams;i++) {
-    av_codec_parameters = decoder->av_format_context->streams[i]->codecpar;
-    if(av_codec_parameters->codec_type == AVMEDIA_TYPE_AUDIO) {
-      decoder->stream_index = (int) i;
-      av_codec = avcodec_find_decoder(av_codec_parameters->codec_id);
-      if(!av_codec) {
-	decoder_free(decoder);
-	return false;
-      }
-      break;
-    }
-  }
-  if(av_codec == NULL) {
-    decoder_free(decoder);
-    return false;
-  }
-  
-  decoder->av_codec_context = avcodec_alloc_context3(av_codec);
-  if(!decoder) {
-    decoder_free(decoder);
-    return false;
-  }
-
-  if(avcodec_parameters_to_context(decoder->av_codec_context, av_codec_parameters) < 0) {
-    decoder_free(decoder);
-    return false;
-  }
-
-  *sample_rate = (int) decoder->av_codec_context->sample_rate;
-
-  if(avcodec_open2(decoder->av_codec_context, av_codec, NULL) < 0) {
-    decoder_free(decoder);
-    return false;
-  }
-  
-  decoder->swr_context = swr_alloc();
-  if(!decoder->swr_context) {
-    decoder_free(decoder);
-    return false;
-  }
-  
-  *channels = av_codec_parameters->ch_layout.nb_channels;
-
-  static const char *layout = "mono";
-  if(*channels == 2) {
-    layout = "stereo";
-  }
-
-  av_opt_set(decoder->swr_context, "in_channel_layout", layout, 0);
-  av_opt_set(decoder->swr_context, "out_channel_layout", layout, 0);
-  av_opt_set_int(decoder->swr_context, "in_sample_fmt", decoder->av_codec_context->sample_fmt, 0);
-  av_opt_set_int(decoder->swr_context, "in_sample_rate", decoder->av_codec_context->sample_rate, 0);
-  av_opt_set_int(decoder->swr_context, "out_sample_fmt", av_sample_format, 0);
-  av_opt_set_int(decoder->swr_context, "out_sample_rate", decoder->av_codec_context->sample_rate, 0);
-  av_opt_set_double(decoder->swr_context, "rmvol", volume, 0);
-  
-  decoder->target_volume = volume;
-  decoder->volume = volume;
-    
-  if(swr_init(decoder->swr_context) < 0) {
-    decoder_free(decoder);
-    return false;
-  }
-  //swr_set_quality(decoder->swr_context, 7);
-  //swr_set_resample_mode(decoder->swr_context, SWR_FILTER_TYPE_CUBIC);
-
-  int bits_per_sample;
-  if(!decoder_fmt_to_bits_per_sample(&bits_per_sample, fmt)) {
-    return false;
-  }
-  decoder->sample_size = *channels * bits_per_sample / 8;
-    
-  decoder->packet = av_packet_alloc();
-  if(!decoder->packet) {
-    decoder_free(decoder);
-    return false;
-  }
-  
-  decoder->frame = av_frame_alloc();
-  if(!decoder->frame) {
-    decoder_free(decoder);
-    return false;
-  }
-  
-  return true;    
-}
-
-DECODER_DEF void decoder_free(Decoder *decoder) {
-  
-  decoder->continue_receive = false;
-  decoder->continue_convert = false;
-
-  if(decoder->frame) {
-    av_frame_free(&decoder->frame);
-    decoder->frame = NULL;    
-  }
-  
-  if(decoder->packet) {
-    av_packet_free(&decoder->packet);
-    decoder->packet = NULL;    
-  }
-
-  if(decoder->swr_context) {
-    swr_free(&decoder->swr_context);
-    decoder->swr_context = NULL;    
-  }
-
-  if(decoder->av_codec_context) {
-    avcodec_close(decoder->av_codec_context);
-    avcodec_free_context(&decoder->av_codec_context);
-    decoder->av_codec_context = NULL;    
-  }
-
-  if(decoder->av_format_context) {
-    avformat_close_input(&decoder->av_format_context);
-    decoder->av_format_context = NULL;    
-  }
-
-  if(decoder->av_io_context) {
-    avio_context_free(&decoder->av_io_context);
-    decoder->av_io_context = NULL;
-  }
-}
-
-DECODER_DEF bool decoder_decode(Decoder *decoder, int *out_samples, unsigned char *buffer) {
-  *out_samples = 0;
-  if(!decoder->continue_convert) {
-    
-    if(!decoder->continue_receive) {
-      if(av_read_frame(decoder->av_format_context, decoder->packet) < 0) {
-	decoder->continue_receive = false;
-	decoder->continue_convert = false;
-	return false;
-      }
-      if(decoder->packet->stream_index != decoder->stream_index) {
-	decoder->continue_receive = false;
-	decoder->continue_convert = false;
-
-	av_packet_unref(decoder->packet);
-	return true;
-      }
-    
-      decoder->continue_receive = true;
-
-      if(avcodec_send_packet(decoder->av_codec_context, decoder->packet) < 0) {
-	//fprintf(stderr, "ERROR: fatal error in avcodec_send_packet\n");
-	//exit(1);
-	return false;
-      }
-    }  
-
-    if(avcodec_receive_frame(decoder->av_codec_context, decoder->frame) >= 0) {
-
-      if(decoder->target_volume != decoder->volume) {
-	av_opt_set_double(decoder->swr_context, "rmvol", decoder->target_volume, 0);
-	double volume;
-	swr_init(decoder->swr_context);
-	av_opt_get_double(decoder->swr_context, "rmvol", 0, &volume);
-	decoder->volume = (float) volume;
-      }
-
-      decoder->pts = decoder->frame->pts;
-      
-      *out_samples = swr_convert(decoder->swr_context, &buffer, decoder->samples,
-				 (const unsigned char **) (decoder->frame->data),
-				 decoder->frame->nb_samples);
-      
-      if(*out_samples > 0) {
-	decoder->continue_convert = true;
-      } else {
-	decoder->continue_convert = false;
-
-	av_frame_unref(decoder->frame);
-      }
-    } else {
-      *out_samples = 0;
-      
-      decoder->continue_convert = false;
-      decoder->continue_receive = false;
-
-      av_packet_unref(decoder->packet);
-    }
-
-    return true;
-  }
-      
-  *out_samples = swr_convert(decoder->swr_context, &buffer, decoder->samples, NULL, 0);
-
-  if(*out_samples > 0) {
-    decoder->continue_convert = true;
-  } else {
-    decoder->continue_convert = false;    
-    av_packet_unref(decoder->packet);
-  }
-
-  return true;
-
-}
-
-
-DECODER_DEF bool decoder_fmt_to_libav_fmt(enum AVSampleFormat *av_fmt, Decoder_Fmt fmt) {
-  switch(fmt) {
-  case DECODER_FMT_S16: {
-    *av_fmt = AV_SAMPLE_FMT_S16;
-    return true;
-  } break;
-  case DECODER_FMT_S32: {
-    *av_fmt = AV_SAMPLE_FMT_S32;
-    return true;
-  } break;
-  case DECODER_FMT_FLT: {
-    *av_fmt = AV_SAMPLE_FMT_FLT;
-    return true;
-  } break;
-  default: {
-    return false;
-  } 
-  }
-}
-
-DECODER_DEF bool decoder_fmt_to_bits_per_sample(int *bits, Decoder_Fmt fmt) {
-  switch(fmt) {
-  case DECODER_FMT_S16: {
-    *bits = 16;
-    return true;
-  } break;
-  case DECODER_FMT_S32: {
-    *bits = 32;
-    return true;
-  } break;
-  case DECODER_FMT_FLT: {
-    *bits = 32;
-    return true;
-  } break;
-  default: {
-    return false;
-  } 
-  }  
-}
-
-DECODER_DEF int decoder_memory_read(void *opaque, uint8_t *buf, int _buf_size) {
-  Decoder_Memory *memory = (Decoder_Memory *) opaque;
-
-  size_t buf_size = (size_t) _buf_size;
-
-  if (buf_size > memory->size - memory->pos) {
-    buf_size = memory->size - memory->pos;
-  }
-
-  if (buf_size <= 0) {
-    return AVERROR_EOF;
-  }
-
-  memcpy(buf, memory->data + memory->pos, buf_size);
-  memory->pos += buf_size;
-
-  return (int )buf_size;
-}
-
-DECODER_DEF int64_t decoder_memory_seek(void *opaque, int64_t offset, int whence) {
-
-  Decoder_Memory *memory = (Decoder_Memory *) opaque;
-
-  switch (whence) {
-  case SEEK_SET:
-    memory->pos = offset;
-    break;
-  case SEEK_CUR:
-    memory->pos += offset;
-    break;
-  case SEEK_END:
-    memory->pos = memory->size + offset;
-    break;
-  case AVSEEK_SIZE:
-    return (int64_t) memory->size;
-  default:
-    return AVERROR_INVALIDDATA;
-  }
-
-  if (memory->pos > memory->size) {
-    return AVERROR(EIO);
-  }
-    
-  return memory->pos;
-}
-
-DECODER_DEF int decoder_file_read(void *opaque, uint8_t *buf, int buf_size) {
-  FILE *f = (FILE *)opaque;
-
-  size_t bytes_read = fread(buf, 1, buf_size, f);
-
-  if (bytes_read == 0) {
-    if(feof(f)) return AVERROR_EOF;
-    else return AVERROR(errno);
-  }
-  
-  return (int) bytes_read;
-}
-
-DECODER_DEF int64_t decoder_file_seek(void *opaque, int64_t offset, int whence) {
-  
-  FILE *f = (FILE *)opaque;
-  
-  if (whence != SEEK_SET && whence != SEEK_CUR && whence != SEEK_END) {
-    return AVERROR_INVALIDDATA;
-  }
-
-  if(fseek(f, (long) offset, whence)) {
-    return AVERROR(errno);
-  }
-
-  return ftell(f);
-}
-
-#endif //DECODER_IMPLEMENTATION
-
-#endif //DECODER_H
-#ifndef EBML_H
-#define EBML_H
-
-//https://datatracker.ietf.org/doc/rfc8794/
-//https://www.matroska.org/technical/elements.html
-
-#ifndef TYPES_H
-#define TYPES_H
-
-#include <stdint.h>
-#include <stdbool.h>
-
-typedef uint8_t u8;
-typedef char s8; // because of mingw warning not 'int8_t'
-typedef uint16_t u16;
-typedef int16_t s16;
-typedef uint32_t u32;
-typedef int32_t s32;
-typedef uint64_t u64;
-typedef int64_t s64;
-
-typedef float f32;
-typedef double f64;
-
-#define return_defer(n) do{			\
-    result = (n);				\
-    goto defer;					\
-  }while(0)
-
-#define errorf(...) do{						\
-    fflush(stdout);						\
-    fprintf(stderr, "%s:%d:ERROR: ", __FILE__, __LINE__);	\
-    fprintf(stderr,  __VA_ARGS__ );				\
-    fprintf(stderr, "\n");					\
-    fflush(stderr);						\
-  }while(0)
-
-#define panicf(...) do{						\
-    errorf(__VA_ARGS__);					\
-    exit(1);							\
-  }while(0)
-
-#endif // TYPES_H
-
-#ifndef EBML_DEF
-#  define EBML_DEF static inline
-#endif // EBML_DEF
-
-#ifndef EBML_LOG
-#  ifdef EBML_QUIET
-#    define EBML_LOG(...)
-#  else
-#    include <stdio.h>
-#    define EBML_LOG(...) fprintf(stderr, "EBML_LOG: "); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n")
-#  endif // EBML_QUIET
-#endif // EBML_QUIET
-
-typedef enum{
-  EBML_TYPE_NONE = 0,
-  EBML_TYPE_MASTER,
-  EBML_TYPE_UINT,
-  EBML_TYPE_STRING,
-}Ebml_Type;
-
-#define EBML_TABLE				\
-  EBML_ENTRY(0x1A45DFA3, MASTER, EBML)		\
-  EBML_ENTRY(0x4286, UINT, EBMLVersion)		\
-  EBML_ENTRY(0x42F7, UINT, EBMLReadVersion)	\
-  EBML_ENTRY(0x42f2, UINT, EBMLMaxIDLength)	\
-  EBML_ENTRY(0x42f3, UINT, EBMLMaxSizeLength)	\
-  EBML_ENTRY(0x4282, STRING, DocType)		\
-  EBML_ENTRY(0x4287, UINT, DocTypeVersion)	\
-  EBML_ENTRY(0x4285, UINT, DocTypeReadVersion)	\
-
-typedef enum {
-  EBML_ID_NONE = 0,
-  
-#define EBML_ENTRY(id, type, name) EBML_ID_##name,
-  EBML_TABLE
-#undef EBML_ENTRY
-  
-}Ebml_Id;
-
-typedef struct{
-  Ebml_Type type;
-  Ebml_Id id;
-}Ebml_Elem;
-
-typedef struct{
-  u8 *data;
-  u64 len;
-}Ebml;
-
-#define ebml_from(d, l) (Ebml) {(d), (l)}
-
-EBML_DEF bool ebml_next(Ebml *e, u64 *size, Ebml_Elem *elem);
-EBML_DEF const char *ebml_id_name(Ebml_Id id);
-EBML_DEF const char *ebml_type_name(Ebml_Type type);
-
-#ifdef EBML_IMPLEMENTATION
-
-EBML_DEF bool ebml_next(Ebml *e, u64 *size, Ebml_Elem *elem) {
-
-  // READ id
-  if(e->len == 0) {
-    return false;
-  }
-
-  u8 b = *e->data;
-
-  u8 bit = 1 << 7;
-  u8 i=1;
-  for(;i<=8;i++) {
-    if(b & bit) break;
-    bit >>= 1;
-  }
-
-  if(e->len < i) {
-    return false;
-  }
-  
-  u64 id = *e->data;
-  for(u8 j=1;j<i;j++) {
-    id <<= 8;
-    id += e->data[j];
-  }
-  e->data += i;
-  e->len  -= i;
-
-  switch(id) {
-#define EBML_ENTRY(ebml_id, ebml_type, ebml_name)	\
-    case (ebml_id): {					\
-      elem->id = (EBML_ID_##ebml_name);			\
-      elem->type = (EBML_TYPE_##ebml_type);		\
-    } break;
-    EBML_TABLE
-#undef EBML_ENTRY
-  default: {
-      EBML_LOG("Unknown id: 0x%llx", id);
-      return false;
-    } break;
-  }
-
-  //READ size
-  if(e->len == 0) {
-    return false;
-  }
-
-  b = *e->data;
-
-  bit = 1 << 7;
-  i=1;
-  for(;i<=8;i++) {
-    if(b & bit) break;
-    bit >>= 1;
-  }
-
-  if(e->len < i) {
-    return false;
-  }
-  
-  *size = *e->data & ~bit;
-  for(u8 j=1;j<i;j++) {
-    *size <<= 8;
-    *size += e->data[j];
-  }
-  e->data += i;
-  e->len  -= i;
-
-  // LOOKUP id
-
-  e->data += *size;
-  e->len  -= *size;
-  
-  return true;
-}
-
-EBML_DEF const char *ebml_id_name(Ebml_Id id) {
-  switch(id) {
-#define EBML_ENTRY(ebml_id, ebml_type, ebml_name) case EBML_ID_##ebml_name: return #ebml_name;
-    EBML_TABLE
-#undef EBML_ENTRY
-  }
-
-  return NULL;
-}
-
-EBML_DEF const char *ebml_type_name(Ebml_Type type) {
-  switch(type) {
-  case EBML_TYPE_NONE: return "NONE";
-  case EBML_TYPE_MASTER: return "Master Element";
-  case EBML_TYPE_UINT: return "Unsigned Integer";
-  case EBML_TYPE_STRING: return "String";
-  }
-
-  return NULL;
-}
-
-#endif // EBML_IMPLEMENTATION
-
-#endif // EBML_H
-#ifndef HTTP_H
-#define HTTP_H
-
-#ifndef HTTP_DEF
-#  define HTTP_DEF static inline
-#endif // HTTP_DEF
-
-#ifndef HTTP_BUFFER_SIZE
-#  define HTTP_BUFFER_SIZE 8192
-#endif //HTTP_BUFFER_SIZE
-
-#ifndef HTTP_ENTRY_SIZE
-#  define HTTP_ENTRY_SIZE 2048
-#endif // HTTP_ENTRY_SIZE
-
-#ifndef HTTP_LOG
-#  ifdef HTTP_QUIET
-#    define HTTP_LOG(...)
-#  else
-#    include <stdio.h>
-#    define HTTP_LOG(...) fprintf(stderr, "HTTP_LOG: "); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n")
-#  endif // HTTP_QUIET
-#endif // HTTP_LOG
-
-#define HTTP_PORT 80
-#define HTTPS_PORT 443
-
-#include <stdio.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdarg.h>
-
-#include <assert.h>
-
-#ifdef _WIN32
-#  include <ws2tcpip.h>
-#  include <winsock2.h>
-#  include <windows.h>
-#elif linux
-#  include <sys/socket.h>
-#  include <netinet/in.h>
-#  include <netdb.h>
-#  include <arpa/inet.h>
-#  include <unistd.h>
-#endif
-
-#ifdef HTTP_OPEN_SSL
-#  include <openssl/ssl.h>
-#  include <openssl/err.h>
-#endif //HTTP_OPEN_SSL
-
-typedef struct{
-#ifdef _WIN32
-  SOCKET socket;
-#else
-  int socket;
-#endif
-
-#ifdef HTTP_OPEN_SSL
-  SSL *conn;  
-#endif // HTTP_OPEN_SSL
-  
-  const char *hostname;
-}Http;
-
-HTTP_DEF bool http_init(const char* hostname, uint16_t port, bool use_ssl, Http *http);
-
-HTTP_DEF bool http_socket_write(const char *data, size_t size, void *http);
-HTTP_DEF bool http_socket_read(char *data, size_t size, void *http, size_t *read);
-
-HTTP_DEF bool http_socket_connect_plain(Http *http, const char *hostname, uint16_t port);
-HTTP_DEF bool http_socket_write_plain(const char *data, size_t size, void *_http);
-HTTP_DEF bool http_socket_read_plain(char *buffer, size_t buffer_size, void *_http, size_t *read);
-
-HTTP_DEF void http_free(Http *http);
-
-typedef struct{
-  Http *http;
-
-  // Buffer read's
-  char buffer[HTTP_BUFFER_SIZE];
-  size_t buffer_pos, buffer_size;
-
-  // Parsing
-  char key[HTTP_ENTRY_SIZE];
-  size_t key_len;
-  char value[HTTP_ENTRY_SIZE];
-  size_t value_len;
-  int body, state, state2, pair;
-  size_t content_read;
-
-  // Info
-  int response_code;
-  size_t content_length;
-  
-}Http_Request;
-
-typedef struct{
-  char *key, *value;
-  size_t key_len, value_len;
-}Http_Header;
-
-HTTP_DEF bool http_request_from(Http *http, const char *route, const char *method,
-				const char *headers,
-				const unsigned char *body, size_t body_len,
-				Http_Request *request);
-HTTP_DEF bool http_next_header(Http_Request *r, Http_Header *entry);
-HTTP_DEF bool http_next_body(Http_Request *r, char **data, size_t *data_len);
-
-HTTP_DEF bool http_maybe_init_external_libs();
-
-HTTP_DEF bool http_parse_u64(char *buffer, size_t buffer_len, uint64_t *out);
-HTTP_DEF bool http_parse_hex_u64(char *buffer, size_t buffer_len, uint64_t *out);
-HTTP_DEF bool http_header_eq(const char *key, size_t key_len, const char *value, size_t value_len);
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-typedef bool (*Http_Sendf_Callback)(const char *data, size_t size, void *userdata);
-
-typedef struct{
-  Http_Sendf_Callback send_callback;
-  char *buffer;
-  size_t buffer_cap;
-  void *userdata;
-  bool last;
-}Http_Sendf_Context;
-
-HTTP_DEF bool http_sendf(Http_Sendf_Callback send_callback, void *userdata,
-			 char *buffer, size_t buffer_cap, const char *format, ...);
-HTTP_DEF bool http_sendf_impl(Http_Sendf_Callback send_callback, void *userdata,
-			      char *buffer, size_t buffer_cap, const char *format, va_list args);
-HTTP_DEF size_t http_sendf_impl_send(Http_Sendf_Context *context, size_t *buffer_size, const char *cstr, size_t cstr_len);
-HTTP_DEF size_t http_sendf_impl_copy(Http_Sendf_Context *context, size_t buffer_size,
-				     const char *cstr, size_t cstr_len, size_t *cstr_off);
-
-#ifdef HTTP_IMPLEMENTATION
-
-#ifdef _WIN32
-#  define HTTP_LOG_OS(method) char msg[1024]; FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR) &msg, sizeof(msg), NULL); HTTP_LOG((method)"-error: (%d) %s", GetLastError(), msg);
-#else
-#  define HTTP_LOG_OS(method) HTTP_LOG((method)"-error: (%d) %s", errno, strerr(errno))
-#endif // _WIN32
-
-#ifdef _WIN32
-static bool http_global_wsa_startup = false;
-#endif //_WIN32
-
-#ifdef HTTP_OPEN_SSL
-static SSL_CTX *http_global_ssl_context = NULL;
-#endif //HTTP_OPEN_SSL
-
-HTTP_DEF bool http_init(const char* hostname, uint16_t port, bool use_ssl, Http *h) {
-
-  size_t hostname_len = strlen(hostname);
-  h->hostname = malloc(hostname_len + 1);
-  if(!h->hostname) {
-    return false;
-  }
-  memcpy((char *) h->hostname, hostname, hostname_len + 1);
-
-  if(!http_maybe_init_external_libs()) {
-    return false;
-  }
-
-#ifdef _WIN32
-  h->socket = WSASocketW(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, 0);
-  if( h->socket == INVALID_SOCKET ) {
-    HTTP_LOG("Failed to initialize socket");
-    return false;
-  }
-#elif linux
-  h->socket = socket(AF_INET, SOCK_STREAM, 0);
-  if( h->socket == -1) {
-    HTTP_LOG("Failed to initialize socket");
-    return false;
-  }
-#else
-  HTTP_LOG("Unsupported platform. Implement: http_init");
-  
-  return false;
-#endif // _WIN32
-
-  if(!http_socket_connect_plain(h, hostname, port)) {
-    HTTP_LOG("Can not connect to '%s:%u'", hostname, port);
-    return false;
-  }
-
-#ifdef HTTP_OPEN_SSL    
-  h->conn = NULL;
-  
-  if(use_ssl) {
-    h->conn = SSL_new(http_global_ssl_context);
-    if(!h->conn) {
-      HTTP_LOG("Fatal error using OPEN_SSL");
-      return false;
-    }
-    SSL_set_fd(h->conn, (int) h->socket); // TODO: maybe check this cast
-
-    SSL_set_connect_state(h->conn);
-    SSL_set_tlsext_host_name(h->conn, hostname);
-    if(SSL_connect(h->conn) != 1) {
-      HTTP_LOG("Can not connect to '%s:%u' via SSL (OPEN_SSL)", hostname, port);
-      return false;
-    }
-  }
-#else
-  if(use_ssl) {
-    HTTP_LOG("Neither HTTP_OPEN_SSL nor HTTP_WIN32_SSL is defined. Define either to be able to use SSL.");
-    return false;    
-  }
-#endif // HTTP_OPEN_SSL
-
-  return true;
-}
-
-HTTP_DEF bool http_maybe_init_external_libs() {
-#ifdef _WIN32
-  if(!http_global_wsa_startup) {
-    
-    WSADATA wsaData;
-    if(WSAStartup(MAKEWORD(2,2), &wsaData) != 0) {
-      HTTP_LOG("Failed to initialize WSA (ws2_32.lib)\n");
-      return false;
-    }
-    
-    http_global_wsa_startup = true;
-  }
-#endif //_WIN32
-
-#ifdef HTTP_OPEN_SSL
-  if(!http_global_ssl_context) {
-    SSL_library_init();
-    OpenSSL_add_all_algorithms();
-    http_global_ssl_context = SSL_CTX_new(TLS_client_method());
-    if(!http_global_ssl_context) {
-      HTTP_LOG("Failed to initialize SSL (openssl.lib, crypto.lib)\n");
-      return false;
-    }    
-  }
-#endif //HTTP_OPEN_SSL
-
-  return true;
-}
-
-HTTP_DEF bool http_socket_connect_plain(Http *http, const char *hostname, uint16_t port) {
-
-#ifdef _WIN32
-  struct addrinfo hints;
-  struct addrinfo* result = NULL;
-
-  ZeroMemory(&hints, sizeof(hints));
-  hints.ai_family = AF_INET;
-  hints.ai_socktype = SOCK_STREAM;
-  hints.ai_protocol = IPPROTO_TCP;
-
-  char port_cstr[6];
-  snprintf(port_cstr, sizeof(port_cstr), "%u", port);
-
-  if(getaddrinfo(hostname, port_cstr, &hints, &result) != 0) {
-    HTTP_LOG("getaddrinfo failed");
-    freeaddrinfo(result);
-    return false;
-  }
-
-  bool out = true;
-  if(connect(http->socket, result->ai_addr, (int) result->ai_addrlen) != 0) {
-    HTTP_LOG("connect failed: %d", GetLastError());
-    out = false;
-  }
-  
-  freeaddrinfo(result);
-
-  return out;
-#elif linux
-  struct sockaddr_in addr = {0};
-
-  struct hostent *hostent = gethostbyname(hostname);
-  if(!hostent) {
-    return false;
-  }
-
-  in_addr_t in_addr = inet_addr(inet_ntoa(*(struct in_addr*)*(hostent->h_addr_list)));
-  if(in_addr == (in_addr_t) -1) {
-    return false;
-  }
-  addr.sin_addr.s_addr = in_addr;
-
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons((u_short) port);
-  if(connect(http->socket, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
-    return false;
-  }
-
-  return true;
-#else
-
-  HTTP_LOG("Unsupported platform. Implement: http_socket_connect_plain");
-  
-  (void) http;
-  (void) hostname;
-  (void) port;
-  return false;
-#endif
-}
-
-HTTP_DEF void http_free(Http *http) {
-
-#ifdef HTTP_OPEN_SSL
-  if(http->conn) {
-    SSL_set_shutdown(http->conn, SSL_RECEIVED_SHUTDOWN | SSL_SENT_SHUTDOWN);
-    SSL_shutdown(http->conn);
-    SSL_free(http->conn);
-  }
-#endif // HTTP_OPEN_SSL
-  
-#ifdef _WIN32
-  closesocket(http->socket);
-  http->socket = INVALID_SOCKET;
-#elif linux
-  close(http->socket);
-#endif
-
-  free((char *) http->hostname);
-}
-
-HTTP_DEF bool http_socket_write(const char *data, size_t size, void *_http) {
-  
-#ifdef HTTP_OPEN_SSL
-  Http *http = (Http *) _http;
-
-  if(!http->conn)
-    return http_socket_write_plain(data, size, http);
-
-  // This loop is needed, for the case that SSL_write returns the error: SSL_ERROR_WANT_WRITE.
-  // If the write fails, because of any error, but we should continue trying to write.
-  
-  do{
-    int ret = SSL_write(http->conn, data, (int) size);
-    if(ret <= 0) {
-
-      int error = SSL_get_error(http->conn, ret);
-
-      if( error == SSL_ERROR_ZERO_RETURN ) {
-
-	// connection was closed
-	return false;
-      } else if( error == SSL_ERROR_WANT_READ ) {
-
-	// try again calling SSL_write
-	continue;
-      } else {
-
-	// ssl_write error
-	// TODO: maybe handle other errors
-	return false;	
-      }
-    } else {
-
-      // ssl_write success
-      return true;
-    } 
-
-  }while(1);
-#else
-  (void) data;
-  (void) size;
-  (void) _http;
-
-  return false;
-#endif // HTTP_OPEN_SSL  
-}
-
-HTTP_DEF bool http_socket_write_plain(const char *data, size_t size, void *_http) {
-
-  Http *http = (Http *) _http;
-
-#ifdef _WIN32
-  int ret = send(http->socket, data, (int) size, 0);
-  if(ret == SOCKET_ERROR) {
-    
-    // send error    
-    return false;
-  } else if(ret == 0) {
-    
-    // connection was closed
-    return false;
-  } else {
-    
-    // send success
-    return true;
-  }
-#elif linux
-
-  int ret = send(http->socket, data, (int) size, 0);
-  if(ret < 0) {
-    // TODO: check if this is the right error
-    if(errno == ECONNRESET) {
-
-      // connection was closed
-      return false;
-    } else {
-
-      // send error
-      return false;
-    }      
-  } else {
-
-    // send success
-    return true;
-  }
-#else
-  return false;
-#endif 
-}
-
-HTTP_DEF bool http_socket_read(char *buffer, size_t buffer_size, void *_http, size_t *read) {
-
-#ifdef HTTP_OPEN_SSL
-  Http *http = (Http *) _http;
-
-  if(!http->conn)
-    return http_socket_read_plain(buffer, buffer_size, http, read);
-
-  *read = 0;
-
-  // This loop is needed, for the case that SSL_read returns the error: SSL_ERROR_WANT_READ.
-  // In this case we should not close the connection which would be indicated by returning
-  // a read of 0. And we should not return false, because there is still data that wants to
-  // be read.
-  do{
-
-    int ret = SSL_read(http->conn, buffer, (int) buffer_size);
-    if(ret < 0) {
-      int error = SSL_get_error(http->conn, ret);
-
-      if( error == SSL_ERROR_ZERO_RETURN ) {
-
-	// connection was closed
-	*read = 0;
-	return false;
-      } else if( error == SSL_ERROR_WANT_READ ) {
-
-	// try again calling SSL_read
-	continue;
-      } else {
-
-	// ssl_read error
-	// TODO: maybe handle other errors
-	return false;	
-      }
-    } else {
-
-      // ssl_read success
-      *read = (size_t) ret;
-      return true;
-    }
-
-    break;
-  }while(1);
-#else
-  (void) buffer;
-  (void) buffer_size;
-  (void) _http;
-  (void) read;
-
-  return false;
-#endif // HTTP_OPEN_SSL
-
-}
-
-HTTP_DEF bool http_socket_read_plain(char *buffer, size_t buffer_size, void *_http, size_t *read) {
-
-  Http *http = (Http *) _http;
-
-#ifdef _WIN32
-  int ret = recv(http->socket, buffer, (int) buffer_size, 0);
-  if(ret == SOCKET_ERROR) {
-    // recv error
-    return false;
-  } else if(ret == 0) {
-
-    // connection was closed
-    *read = 0;
-    return true;
-  } else {
-
-    // recv success
-    *read = (size_t) ret;
-    return true;
-  }
-#elif linux
-
-  int ret = recv(http->socket, buffer, (int) buffer_size, 0);
-  if(ret < 0) {
-
-    // recv error
-    return false;
-  } else if(ret == 0) {
-
-    // connection was closed
-    *read = 0;
-    return true;
-  } else {
-
-    *read = (size_t) ret; 
-    return true;
-  }
-#else
-  return false;
-#endif 
-}
-
-#define HTTP_REQUEST_STATE_DONE -2
-#define HTTP_REQUEST_STATE_ERROR -1
-#define HTTP_REQUEST_STATE_IDLE 0
-#define HTTP_REQUEST_STATE_R    1
-#define HTTP_REQUEST_STATE_RN   2
-#define HTTP_REQUEST_STATE_RNR  3
-#define HTTP_REQUEST_STATE_BODY 4
-
-#define HTTP_REQUEST_PAIR_INVALID 0
-#define HTTP_REQUEST_PAIR_KEY 1
-#define HTTP_REQUEST_PAIR_VALUE 2
-
-#define HTTP_REQUEST_BODY_NONE 0
-#define HTTP_REQUEST_BODY_CONTENT_LEN 1
-#define HTTP_REQUEST_BODY_CHUNKED 2
-#define HTTP_REQUEST_BODY_INFO 3
-
-#ifdef HTTP_OPEN_SSL
-#  define HTTP_WRITE_FUNC http_socket_write
-#  define HTTP_READ_FUNC http_socket_read
-#else
-#  define HTTP_WRITE_FUNC http_socket_write_plain
-#  define HTTP_READ_FUNC http_socket_read_plain
-#endif // HTTP_OPEN_SSL
-
-
-HTTP_DEF bool http_request_from(Http *http, const char *route, const char *method,
-				const char *headers,
-				const unsigned char *body, size_t body_len,
-				Http_Request *r) {
-
-  r->http = http;
-  r->buffer_size = 0;
-  r->body = HTTP_REQUEST_BODY_NONE;
-  r->state = HTTP_REQUEST_STATE_IDLE;
-  r->state2 = HTTP_REQUEST_STATE_IDLE;
-  r->pair = HTTP_REQUEST_PAIR_KEY;
-  r->key_len = 0;
-  r->value_len = 0;
-  
-  if(body_len > 0) {
-
-    int len = (int) body_len;
-    
-    if(!http_sendf(HTTP_WRITE_FUNC, http, r->buffer, sizeof(r->buffer),
-		   "%s %s HTTP/1.1\r\n"
-		   "Host: %s\r\n"
-		   "%s"
-		   "Content-Length: %d\r\n"
-		   "\r\n"
-		   "%.*s", method, route, http->hostname, headers ? headers : "", len , len, (char *) body)) {
-      HTTP_LOG("Failed to send http-request");
-      return false;
-    }
-    
-  } else {
-    if(!http_sendf(HTTP_WRITE_FUNC, http, r->buffer, sizeof(r->buffer),
-		   "%s %s HTTP/1.1\r\n"
-		   "Host: %s\r\n"
-		   "%s"
-		   "\r\n", method, route, http->hostname, headers ? headers : "")) {
-      HTTP_LOG("Failed to send http-request");
-      return false;
-    }    
-  }
-
-  if(!HTTP_READ_FUNC(r->buffer, sizeof(r->buffer), r->http, &r->buffer_size)) {
-    return false;
-  }
-  if(r->buffer_size == 0) {
-    return false;
-  }
-  r->buffer_pos = 0;
-  
-  return true;
-}
-
-HTTP_DEF bool http_next_header(Http_Request *r, Http_Header *header) {
-
- start:
-  if(r->state == HTTP_REQUEST_STATE_ERROR ||
-     r->state == HTTP_REQUEST_STATE_DONE) {
-    return false;
-  }
-
-  if(r->buffer_size == 0) {
-    if(!HTTP_READ_FUNC(r->buffer, sizeof(r->buffer), r->http, &r->buffer_size)) {
-      return false;
-    }
-
-    if(r->buffer_size == 0) {
-      return false;
-    }
-    r->buffer_pos = 0;
-  }
-
-  for(size_t i=0;i<r->buffer_size;i++) {
-    int state_before = r->state;
-
-    char c = r->buffer[r->buffer_pos + i];
-    
-    if(c == '\r') {
-      if(r->state == HTTP_REQUEST_STATE_IDLE) r->state = HTTP_REQUEST_STATE_R;
-      else if(r->state == HTTP_REQUEST_STATE_R) r->state = HTTP_REQUEST_STATE_IDLE;
-      else if(r->state == HTTP_REQUEST_STATE_RN) r->state = HTTP_REQUEST_STATE_RNR;
-      else if(r->state == HTTP_REQUEST_STATE_RNR) r->state = HTTP_REQUEST_STATE_IDLE;
-      else if(r->state == HTTP_REQUEST_STATE_BODY) r->state = HTTP_REQUEST_STATE_BODY;
-    } else if(c == '\n') {
-      if(r->state == HTTP_REQUEST_STATE_IDLE) r->state = HTTP_REQUEST_STATE_IDLE;
-      else if(r->state == HTTP_REQUEST_STATE_R) r->state = HTTP_REQUEST_STATE_RN;
-      else if(r->state == HTTP_REQUEST_STATE_RN) r->state = HTTP_REQUEST_STATE_IDLE;
-      else if(r->state == HTTP_REQUEST_STATE_RNR) r->state = HTTP_REQUEST_STATE_BODY;
-      else if(r->state == HTTP_REQUEST_STATE_BODY) r->state = HTTP_REQUEST_STATE_BODY;
-    } else {
-      if(r->state == HTTP_REQUEST_STATE_BODY) r->state = HTTP_REQUEST_STATE_BODY;
-      else r->state = HTTP_REQUEST_STATE_IDLE;
-    }
-
-    if(r->state == HTTP_REQUEST_STATE_IDLE && state_before == HTTP_REQUEST_STATE_RN) {
-      r->pair = HTTP_REQUEST_PAIR_KEY;
-    }
-
-    if(r->pair == HTTP_REQUEST_PAIR_KEY) {
-      if(c == ':') {
-	r->pair = HTTP_REQUEST_PAIR_VALUE;
-      } else if(c == '\r') {
-
-	// 'HTTP/1.1 '
-	static char http1_prefix[] = "HTTP";
-	static size_t http1_prefix_len = sizeof(http1_prefix) - 1;
-
-	if(r->key_len < http1_prefix_len ||
-	   memcmp(http1_prefix, r->key, http1_prefix_len) != 0) {
-	  HTTP_LOG("http1-prefix is not present: '%.*s'", (int) r->key_len, r->key);
-	  r->state = HTTP_REQUEST_STATE_ERROR;
-	  return false;
-	}
-
-	// '200'
-	if(r->key_len < http1_prefix_len + 5 + 3) {
-	  HTTP_LOG("http1 responseCode is not present");
-	  r->state = HTTP_REQUEST_STATE_ERROR;
-	  return false;
-	}
-
-        size_t out;
-	if(!http_parse_u64(r->key + 5 + http1_prefix_len, 3, &out)) {
-	  HTTP_LOG("Failed to parse: '%.*s'", (int) 3, r->key + http1_prefix_len + 5);
-	  r->state = HTTP_REQUEST_STATE_ERROR;
-	  return false;
-	}
-	r->response_code = (int) out;	
-	
-      } else if(c == '\n') {
-	r->key_len = 0;
-      } else {
-	assert(r->key_len < sizeof(r->key) - 1);
-	r->key[r->key_len++] = c;
-      }
-    } else if(r->pair == HTTP_REQUEST_PAIR_VALUE) {
-      if(c == '\r') {
-
-	static char content_length_cstr[] = "content-length";
-	static size_t content_length_cstr_len = sizeof(content_length_cstr) - 1;
-
-	if(http_header_eq(r->key, r->key_len, content_length_cstr, content_length_cstr_len)) {
-
-	  size_t len = r->value_len - 1;
-	  if(!http_parse_u64(r->value, len, &r->content_length)) {
-	    HTTP_LOG("Failed to parse: '%.*s'", (int) len, r->value);
-	    r->state = HTTP_REQUEST_STATE_ERROR;
-	    return false;
-	  }
-
-	  if(r->body != HTTP_REQUEST_BODY_NONE) {
-	    HTTP_LOG("Http-Body was already specified");
-	    r->state = HTTP_REQUEST_STATE_ERROR;
-	    return false;
- 
-	  }
-	  r->body = HTTP_REQUEST_BODY_CONTENT_LEN;
-	  r->content_read = 0;
-	}
-
-	static char chunked_encoding[] = "transfer-encoding";
-	static size_t chunked_encoding_len = sizeof(chunked_encoding) - 1;
-	static char chunked[] = "chunked";
-	static size_t chunked_len = sizeof(chunked) - 1;
-	
-	if(http_header_eq(r->key, r->key_len, chunked_encoding, chunked_encoding_len) &&
-	   http_header_eq(r->value, r->value_len - 1, chunked, chunked_len)) {
-	  if(r->body != HTTP_REQUEST_BODY_NONE) {
-	    HTTP_LOG("Http-Body was already specified");
-	    r->state = HTTP_REQUEST_STATE_ERROR;
-	    return false;
- 
-	  }
-	  r->body = HTTP_REQUEST_BODY_CHUNKED;
-	  r->content_length = 0;
-	  r->content_read = 0;
-	}
-
-        r->key[r->key_len] = 0;
-	r->value[r->value_len - 1] = 0;
-
-	header->key = r->key;
-	header->key_len = r->key_len;
-	header->value = r->value;
-	header->value_len = r->value_len - 1;
-	
-	r->pair = HTTP_REQUEST_PAIR_INVALID;
-	r->value_len = 0;
-	r->key_len = 0;
-
-	r->buffer_pos  += i - 1;
-	r->buffer_size -= i - 1;
-        return true;
-      } else {
-	assert(r->value_len < sizeof(r->value) - 1);
-	if(r->value_len == 0) r->value_len++;
-	else r->value[r->value_len++ - 1] = c;
-      }
-    }
-
-    if(r->state == HTTP_REQUEST_STATE_BODY) {
-      r->buffer_pos  += i + 1;
-      r->buffer_size -= i + 1;
-      return false;
-    }
-
-  }
-
-  r->buffer_size = 0;
-  goto start;
-}
-
-HTTP_DEF bool http_next_body(Http_Request *r, char **data, size_t *data_len) {
-  
-  // Maybe parse Headers
-  if(r->state != HTTP_REQUEST_STATE_BODY) {
-    Http_Header header;
-    while(http_next_header(r, &header)) ;
-  }
-
- start:
-
-  // Mabye exit
-  if(r->state == HTTP_REQUEST_STATE_ERROR ||
-     r->state == HTTP_REQUEST_STATE_DONE) {
-    return false;
-  }
- 
-  // Read 
-  if(r->buffer_size == 0) {
-    if(!HTTP_READ_FUNC(r->buffer, sizeof(r->buffer), r->http, &r->buffer_size)) {
-      return false;
-    }
-
-    if(r->buffer_size == 0) {
-      return false;
-    }
-    r->buffer_pos = 0;
-  }
-
-  // Consume
-  if(r->body == HTTP_REQUEST_BODY_CONTENT_LEN) {
-
-    if(r->content_read + r->buffer_size > r->content_length) {
-      HTTP_LOG("Server send too much data");
-      return false;
-    }
-    r->content_read += r->buffer_size;
-    
-    if(r->content_read == r->content_length) {
-      r->state = HTTP_REQUEST_STATE_DONE;
-    }
-    
-    *data = r->buffer + r->buffer_pos;
-    *data_len = r->buffer_size;
-    r->buffer_size = 0;
-
-    return true;
-  } else if(r->body == HTTP_REQUEST_BODY_CHUNKED) {
-
-    for(size_t i=0;i<r->buffer_size;i++) {
-      char c = r->buffer[r->buffer_pos + i];
-
-      if(c == '\r') {
-	r->state2 = HTTP_REQUEST_STATE_R;
-      } else if(c == '\n') {
-	if(r->state2 == HTTP_REQUEST_STATE_R) r->state2 = HTTP_REQUEST_STATE_RN;
-	else r->state2 = HTTP_REQUEST_STATE_IDLE;
-      } else {
-	r->state2 = HTTP_REQUEST_STATE_IDLE;
-      }
-
-      if(r->content_read == 0) {
-	if(r->state2 == HTTP_REQUEST_STATE_IDLE) {
-	  assert(r->key_len < 4);
-	  r->key[r->key_len++] = c;
-	} else if(r->state2 == HTTP_REQUEST_STATE_RN) {
-
-	  // TODO: this may be incorrect
-	  if(r->key_len == 0) {
-	    /* HTTP_LOG("Failed to parse: '%.*s'", (int) r->key_len, r->key); */
-	    /* r->state = HTTP_REQUEST_STATE_ERROR; */
-	    /* return false; */
-
-	    continue;
-	  }
-
-	  if(!http_parse_hex_u64(r->key, r->key_len, &r->content_read)) {
-	    HTTP_LOG("Failed to parse: '%.*s'", (int) r->key_len, r->key);
-	    r->state = HTTP_REQUEST_STATE_ERROR;
-	    return false;
-	  }
-	  r->key_len = 0;
-
-	  size_t advance = i + 1; // consume '\n'
-	  
-	  r->buffer_pos += advance;
-	  r->buffer_size -= advance;
-	  if(r->content_read == 0) {
-	    r->state = HTTP_REQUEST_STATE_DONE;
-	    return false;
-	  } else {
-	    goto start;
-	  }
-	  
-	} else {
-	  // parse \r\n
-	}	      
-      } else {
-
-	if(r->state2 == HTTP_REQUEST_STATE_RN) {
-	  
-	  size_t len = i - 1;      // exclude '\r'
-	  size_t advance = i + 1;  // consume '\n'
-
-	  *data = r->buffer + r->buffer_pos;
-	  *data_len = len;
-
-	  r->buffer_pos += advance;
-	  r->buffer_size -= advance;
-
-	  assert(r->content_read >= len);
-	  r->content_read -= len;
-	  r->content_length += len;
-	  return true;
-	} else {
-	  //do nothing
-	}	  
-      }
-      
-    }
-
-    if(r->content_read == 0) {
-      r->buffer_size = 0;
-      
-      goto start;
-    } else {
-
-      size_t len = r->buffer_size;
-      if(r->state2 == HTTP_REQUEST_STATE_R) {
-	len--;
-      }
-
-      *data = r->buffer + r->buffer_pos;
-      *data_len = len;
-
-      assert(r->content_read >= len);
-      r->content_read -= len;
-      r->content_length += len;
-
-      r->buffer_pos += r->buffer_size;
-      r->buffer_size -= r->buffer_size;
-      
-      return true;
-    }
-      
-
-  } else {
-    
-    HTTP_LOG("Unimplemented body specification");
-    return false;
-  }
-    
-}
-
-HTTP_DEF bool http_parse_hex_u64(char *buffer, size_t buffer_len, uint64_t *out) {
-  size_t i = 0;
-  uint64_t res = 0;
-
-  while(i < buffer_len) {
-    char c = buffer[i];
-
-    res *= 16;
-    if('0' <= c && c <= '9') {
-      res += c - '0';
-    } else if('a' <= c && c <= 'z') {
-      res += c - 'W';
-    } else if('A' <= c && c <= 'Z') {
-      res += c - '7';
-    } else {
-      break;
-    }
-    i++;
-  }
-
-  *out = res;
-  
-  return i > 0 && i == buffer_len;
-}
-
-HTTP_DEF bool http_parse_u64(char *buffer, size_t buffer_len, uint64_t *out) {
-
-  uint64_t res = 0;
-
-  size_t i = 0;
-  while(i < buffer_len && '0' <= buffer[i] && buffer[i] <= '9') {
-    res *= 10;
-    res += buffer[i] - '0';
-    i++;
-  }
-
-  *out = res;
-  
-  return i > 0 && i == buffer_len;
-}
-
-// key  : 'ConTENT-LeNGTHasdfasdfasdf'
-// value: 'content-length'
-//     => true
-HTTP_DEF bool http_header_eq(const char *key, size_t key_len, const char *value, size_t value_len) {
-
-  if(key_len != value_len) {
-    return false;
-  }
-
-  for(size_t i=0;i<key_len;i++) {
-    char src = value[i];
-    char trg = key[i];
-
-    if('a' <= src && src <= 'z' &&
-       'A' <= trg && trg <= 'Z')  {
-      trg += ' ';
-    }
-
-    if(src != trg) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-
-HTTP_DEF bool http_sendf(Http_Sendf_Callback send_callback, void *userdata,
-			 char *buffer, size_t buffer_cap, const char *format, ...) {
-  va_list va;
-  va_start(va, format);
-  bool result = http_sendf_impl(send_callback, userdata, buffer, buffer_cap, format, va);
-  va_end(va);
-  return result;
-}
-
-HTTP_DEF bool http_sendf_impl(Http_Sendf_Callback send_callback, void *userdata,
-			      char *buffer, size_t buffer_cap, const char *format, va_list va) {
-  Http_Sendf_Context context = {0};
-  context.send_callback = send_callback;
-  context.buffer = buffer;
-  context.buffer_cap = buffer_cap;
-  context.userdata = userdata;
-  context.last = false;
-
-  size_t buffer_size = 0;
-  size_t format_len = strlen(format);
-  size_t format_last = 0;
-
-  for(size_t i=0;i<format_len;i++) {
-    if(format[i]=='%' && i+1 < format_len) {
-      if(!http_sendf_impl_send(&context, &buffer_size, format + format_last, i - format_last)) {
-	return false;
-      }
-      if (format[i+1] == 'c') { // %c
-	char c = (char) va_arg(va, int);
-	if(!http_sendf_impl_send(&context, &buffer_size, &c, 1)) {
-	  return false;
-	}
-
-	format_last = i+2;
-	i++;
-      } else if(format[i+1]=='s') { // %
-	const char *argument_cstr = va_arg(va, char *);
-	if(!http_sendf_impl_send(&context, &buffer_size, argument_cstr, strlen(argument_cstr))) {
-	  return false;
-	}
-
-	format_last = i+2;
-	i++;
-      } else if(format[i+1]=='d') { // %d
-	int n = va_arg(va, int);
-
-	if(n == 0) {
-	  const char *zero = "0";
-	  if(!http_sendf_impl_send(&context, &buffer_size, zero, 1)) {
-	    return false;
-	  }	  
-	} else {
-#define HTTP_SENDF_DIGIT_BUFFER_CAP 32
-	  static char digit_buffer[HTTP_SENDF_DIGIT_BUFFER_CAP ];
-	  size_t digit_buffer_count = 0;
-	  bool was_negative = false;
-	  if(n < 0) {
-	    was_negative = true;
-	    n *= -1;
-	  }
-	  while(n > 0) {
-	    int m = n % 10;
-	    digit_buffer[HTTP_SENDF_DIGIT_BUFFER_CAP - digit_buffer_count++ - 1] = (char) m + '0';
-	    n = n / 10;
-	  }
-	  if(was_negative) {
-	    digit_buffer[HTTP_SENDF_DIGIT_BUFFER_CAP - digit_buffer_count++ - 1] = '-';
-	  }
-	  if(!http_sendf_impl_send(&context, &buffer_size,
-				   digit_buffer + (HTTP_SENDF_DIGIT_BUFFER_CAP - digit_buffer_count), digit_buffer_count)) {
-	    return false;
-	  }
-	}	
-
-	format_last = i+2;
-	i++;
-      } else if(format[i+1] == '.' && i+3 < format_len &&
-		format[i+2] == '*' && format[i+3] == 's') { //%.*s
-
-	int argument_cstr_len = va_arg(va, int);
-	const char *argument_cstr = va_arg(va, char *);
-
-	if(!http_sendf_impl_send(&context, &buffer_size, argument_cstr, (size_t) argument_cstr_len)) {
-	  return false;
-	}
-
-	format_last = i+4;
-	i+=3;
-      }
-    }
-  }
-
-  context.last = true;
-  if(!http_sendf_impl_send(&context, &buffer_size, format + format_last, format_len - format_last)) {
-    return false;
-  }
-
-  return true;
-}
-
-HTTP_DEF size_t http_sendf_impl_send(Http_Sendf_Context *context, size_t *buffer_size, const char *cstr, size_t cstr_len) {
-  size_t cstr_off = 0;
-  while(true) {
-    *buffer_size = http_sendf_impl_copy(context, *buffer_size, cstr, cstr_len, &cstr_off);
-    if(*buffer_size == context->buffer_cap || (context->last && *buffer_size != 0)) {
-      if(!context->send_callback(context->buffer, *buffer_size, context->userdata)) {
-	return false;
-      }
-    }
-    if(*buffer_size < context->buffer_cap) break;
-    *buffer_size = 0;
-  }
-
-  return true;
-}
-
-HTTP_DEF size_t http_sendf_impl_copy(Http_Sendf_Context *context, size_t buffer_size,
-				     const char *cstr, size_t cstr_len, size_t *cstr_off) {
-  size_t diff = cstr_len - *cstr_off;
-
-  if(buffer_size + diff < context->buffer_cap) {
-    memcpy(context->buffer + buffer_size, cstr + *cstr_off, diff);
-
-    *cstr_off = 0;
-    return buffer_size + diff;
-  } else{
-    size_t buffer_diff = context->buffer_cap - buffer_size;
-    memcpy(context->buffer + buffer_size, cstr + *cstr_off, buffer_diff);
-    
-    (*cstr_off) += buffer_diff;
-    return buffer_size + buffer_diff;
-  }  
-
-}
-
-#endif // HTTP_IMPLEMENTATION
-
-#endif // HTTP_H
-#ifndef IO_H
-#define IO_H
-
-#include <stdio.h>
-#include <stdbool.h>
-
-#ifdef _WIN32
-#  include <windows.h>
-#  define IO_MAX_PATH MAX_PATH  
-#endif //_WIN32
-
-#ifndef IO_DEF
-#  define IO_DEF static inline
-#endif //IO_DEF
-
-#ifndef IO_LOG
-#  ifndef IO_QUIET
-#    define IO_LOG(fmt, ...) fprintf(stderr, "IO_LOG: "fmt"\n", __VA_ARGS__)
-#  else 
-#    define IO_LOG(...)
-#  endif // IO_VERBOSE
-#endif //IO_LOG
-
-////////////////////////////////////////////////////////////////////////////////////////
-
-// Io_Util
-
-typedef bool (*Io_Stream_Callback)(void *userdata, const unsigned char *buf, size_t buf_size);
-
-IO_DEF bool io_slurp_file(const char *filepath, unsigned char **data, size_t *data_size);
-IO_DEF bool io_write_file(const char *filepath, unsigned char *data, size_t data_size);
-IO_DEF bool io_delete_file(const char *filepath);
-IO_DEF bool io_stream_file(const char *filepath, Io_Stream_Callback callback, unsigned char *buf, size_t buf_size, void *userdata);
-
-IO_DEF bool io_create_dir(const char *dir_path, bool *existed);
-IO_DEF bool io_delete_dir(const char *dir_path);
-
-IO_DEF bool io_exists(const char *file_path, bool *is_file);
-
-////////////////////////////////////////////////////////////////////////////////////////
-
-// Io_Dir
-
-typedef struct{
-#ifdef _WIN32
-    WIN32_FIND_DATAW file_data;
-    HANDLE handle;
-    bool stop;
-#else
-    struct dirent *ent;
-    DIR *handle;
-#endif //_WIN32
-
-    const char *name;
-}Io_Dir;
-
-typedef struct{
-  char abs_name[IO_MAX_PATH];
-  char *name;
-  bool is_dir;  
-}Io_Dir_Entry;
-
-IO_DEF bool io_dir_open(Io_Dir *dir, const char *dir_path);
-IO_DEF bool io_dir_next(Io_Dir *dir, Io_Dir_Entry *entry);
-IO_DEF void io_dir_close(Io_Dir *dir);
-
-////////////////////////////////////////////////////////////////////////////////////////
-
-// Io_File
-
-typedef enum{
-  IO_MODE_READ = 0,
-  IO_MODE_WRITE,
-  COUNT_IO_MODE,
-}Io_Mode;
-
-#ifdef _WIN32
-typedef struct{ HANDLE handle; DWORD size; DWORD pos; }Io_File;
-#else
-typedef struct{ FILE *f; }Io_File;
-#endif //_WIN32
-
-IO_DEF bool io_file_size(Io_File *f, size_t *size);
-
-IO_DEF bool io_file_open(Io_File *f, const char *filepath, Io_Mode mode);
-IO_DEF int io_file_seek(Io_File *f, long int offset, int whence);
-IO_DEF long int io_file_tell(Io_File *f);
-IO_DEF size_t io_file_read(Io_File *f, void *ptr, size_t size, size_t count);
-IO_DEF size_t io_file_write(Io_File *f, void *ptr, size_t size, size_t nmemb);
-IO_DEF void io_file_close(Io_File *f);
-
-////////////////////////////////////////////////////////////////////////////////////////
-
-IO_DEF int io_last_error();
-IO_DEF const char *io_last_error_cstr();
-
-#ifdef IO_IMPLEMENTATION
-
-#define io_file_write_cstr(f, cstr) io_file_write((f), (cstr), 1, (strlen(cstr)))
-
-IO_DEF bool io_slurp_file(const char *filepath, unsigned char **data, size_t *data_size) {
-  Io_File f;
-  if(!io_file_open(&f, filepath, IO_MODE_READ)) {
-    IO_LOG("Failed to open '%s': (%d) %s",
-	   filepath, io_last_error(), io_last_error_cstr());
-    return false;
-  }
-
-  if(!io_file_size(&f, data_size)) {
-    io_file_close(&f);
-    return false;
-  }
-
-  unsigned char *result = malloc(*data_size);
-  if(!result) {
-    io_file_close(&f);
-    IO_LOG("Failed to allocate enough memory. Tried to allocate: %zu bytes", *data_size);
-    return false;
-  }
-
-  if(*data_size != io_file_read(&f, result, 1, *data_size)) {
-    io_file_close(&f);
-    IO_LOG("Failed to read: '%s': (%d) %s",
-	   filepath, io_last_error(), io_last_error_cstr());
-    return false;
-  }
-
-  *data = result;
-  io_file_close(&f);
-
-  return true;
-}
-
-IO_DEF bool io_write_file(const char *filepath, unsigned char *data, size_t data_size) {
-  Io_File f;
-  if(!io_file_open(&f, filepath, IO_MODE_WRITE)) {
-    IO_LOG("Failed to open '%s': (%d) %s",
-	   filepath, io_last_error(), io_last_error_cstr());
-    return false;
-  }
-
-  if(data_size != io_file_write(&f, data, 1, data_size)) {
-    io_file_close(&f);
-    IO_LOG("Failed to write '%s': (%d) %s",
-	   filepath, io_last_error(), io_last_error_cstr());
-    return false;    
-  }
-
-  io_file_close(&f);
-  return true;
-}
-
-IO_DEF bool io_delete_file(const char *filepath) {
-  if(!DeleteFile(filepath)) {
-    IO_LOG("Failed to delete file '%s': (%d) %s",
-	   filepath, io_last_error(), io_last_error_cstr());
-    return false;
-  }
-
-  return true;
-}
-
-IO_DEF bool io_stream_file(const char *filepath, Io_Stream_Callback callback, unsigned char *buf, size_t buf_size, void *userdata) {
-  Io_File f;
-  if(!io_file_open(&f, filepath, IO_MODE_READ)) {
-    IO_LOG("Failed to open '%s': (%d) %s",
-	   filepath, io_last_error(), io_last_error_cstr());
-    return false;
-  }
-
-  while(true) {
-    size_t read = io_file_read(&f, buf, 1, buf_size);
-    if(read == 0) {
-      break;
-    }
-
-    if(!callback(userdata, buf, read)) {
-      io_file_close(&f);
-      return false;
-    }    
-  }
-
-  io_file_close(&f);
-  return true;
-}
-
-IO_DEF bool io_create_dir(const char *dir_path, bool *_existed) {
-  if(CreateDirectory(dir_path, NULL)) {
-    if(_existed) *_existed = false;
-    return true;
-  } else {
-    bool existed = io_last_error() == ERROR_ALREADY_EXISTS;
-    if(!existed) {
-      IO_LOG("Failed to create direcory '%s': (%d) %s",
-	     dir_path, io_last_error(), io_last_error_cstr());
-      return false;
-    }
-  
-    if(_existed) *_existed = existed;    
-    return true;    
-  }
-}
-
-IO_DEF bool io_delete_dir(const char *dir_path) {
-  Io_Dir dir;
-  if(!io_dir_open(&dir, dir_path)) {
-    return true;
-  }
-
-  Io_Dir_Entry entry;
-  while(io_dir_next(&dir, &entry)) {
-
-    if(strncmp(entry.name, ".", 1) == 0 ||
-       strncmp(entry.name, "..", 2) == 0) {
-      continue;
-    }
-    
-    if(entry.is_dir) {
-      if(!io_delete_dir(entry.abs_name)) {
-	io_dir_close(&dir);
-	return false;
-      }
-    } else {
-      if(!io_delete_file(entry.abs_name)) {
-	io_dir_close(&dir);
-	IO_LOG("Failed to delete directory '%s': Can not delete file: '%s'", dir_path, entry.name);
-	return false;
-      }
-    }
-  }
-
-  io_dir_close(&dir);
-
-  if(!RemoveDirectory(dir_path)) {
-    IO_LOG("Failed to remove direcory '%s': (%d) %s",
-	   dir_path, io_last_error(), io_last_error_cstr()); 
-    return false;
-  }
-  
-  return true;
-}
-
-IO_DEF bool io_exists(const char *file_path, bool *is_file) {
-  DWORD attribs = GetFileAttributes(file_path);
-  if(is_file) *is_file = !(attribs & FILE_ATTRIBUTE_DIRECTORY);
-  return attribs != INVALID_FILE_ATTRIBUTES;
-}
-////////////////////////////////////////////////////////////////////////////////////////
-
-IO_DEF bool io_dir_open(Io_Dir *dir, const char *dir_path) {
-#ifdef _WIN32
-  int num_wchars = MultiByteToWideChar(CP_UTF8, 0, dir_path, -1, NULL, 0); 
-  wchar_t *my_wstring = (wchar_t *)malloc((num_wchars+1) * sizeof(wchar_t));
-  MultiByteToWideChar(CP_UTF8, 0, dir_path, -1, my_wstring, num_wchars);
-  my_wstring[num_wchars-1] = '*';
-  my_wstring[num_wchars] = 0;
-
-  // Use my_wstring as a const wchar_t *
-  dir->handle = FindFirstFileExW(my_wstring, FindExInfoStandard, &dir->file_data, FindExSearchNameMatch, NULL, 0);
-  if(dir->handle == INVALID_HANDLE_VALUE) {
-    free(my_wstring);
-    return false;
-  }
-
-  bool is_dir = (dir->file_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) > 0;
-  if(!is_dir) {
-    free(my_wstring);
-    return false;
-  }
-
-  dir->name = dir_path;
-  dir->stop = false;
-
-  free(my_wstring);
-  return true;
-#else
-  return false;
-#endif //_WIN32
-}
-
-IO_DEF bool io_dir_next(Io_Dir *dir, Io_Dir_Entry *entry) {
-#ifdef _WIN32
-  if(dir->stop) {
-    return false;
-  }
-
-  entry->is_dir = (dir->file_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) > 0;
-
-  size_t len = strlen(dir->name);
-  memcpy(entry->abs_name, dir->name, len);
-  int len2 = WideCharToMultiByte(CP_ACP, 0, dir->file_data.cFileName, -1, NULL, 0, NULL, NULL);
-  WideCharToMultiByte(CP_ACP, 0, dir->file_data.cFileName, -1, entry->abs_name + len, len2, NULL, NULL);
-
-  //WHAT IS THIS
-  if(entry->is_dir) {
-    entry->abs_name[len + len2-1] = '/';
-    entry->abs_name[len + len2] = 0;       
-  } else {
-    entry->abs_name[len + len2-1] = 0;
-  }
-
-  entry->name = (char *) &entry->abs_name[len];
-
-  if(FindNextFileW(dir->handle, &dir->file_data) == 0) {
-    dir->stop = true;
-  }
-
-  return true;
-#else
-  return false;
-#endif //_WIN32
-}
-
-IO_DEF void io_dir_close(Io_Dir *dir) {
-#ifdef _WIN32
-  FindClose(dir->handle);
-#else
-  
-#endif //_WIN32
-}
-
-////////////////////////////////////////////////////////////////////////////////////////
-
-IO_DEF bool io_file_size(Io_File *f, size_t *size) {
-#ifdef _WIN32
-  *size = f->size;
-  return true;
-#else
-  return false;
-#endif //_WIN32
-}
-
-IO_DEF bool io_file_open(Io_File *f, const char *filepath, Io_Mode mode) {
-#ifdef _WIN32
-  if(mode < 0 || COUNT_IO_MODE <= mode)
-    return false;
-
-  f->handle = INVALID_HANDLE_VALUE;
-
-  if(mode == IO_MODE_READ) {
-    f->handle = CreateFile(filepath, GENERIC_READ,
-			   FILE_SHARE_READ,
-			   NULL,
-			   OPEN_EXISTING,
-			   FILE_ATTRIBUTE_NORMAL,
-			   NULL);
-    if(f->handle == INVALID_HANDLE_VALUE)
-      goto error;
-
-    f->size = GetFileSize(f->handle, NULL);
-    if(f->size == INVALID_FILE_SIZE)
-      goto error;
-
-    f->pos = 0;
-  } else {
-    f->handle = CreateFile(filepath,
-			   GENERIC_WRITE, 0, NULL,
-			   CREATE_ALWAYS,
-			   FILE_ATTRIBUTE_NORMAL,
-			   NULL);
-    if(f->handle == INVALID_HANDLE_VALUE)
-      goto error;
-    
-    f->pos = 0;
-    f->size = INVALID_FILE_SIZE;
-  }
-  
-  return true;
- error:
-
-  if(f->handle != INVALID_HANDLE_VALUE)
-    CloseHandle(f->handle);
-  
-  return false;
-#else
-  return false;
-#endif //_WIN32  
-}
-
-IO_DEF int io_file_seek(Io_File *f, long int offset, int whence) {
-#ifdef _WIN32
-  DWORD moveMethod;
-
-  switch (whence) {
-  case SEEK_SET: {
-    moveMethod = FILE_BEGIN;    
-  } break;
-  case SEEK_CUR: {
-    moveMethod = FILE_CURRENT;    
-  } break;
-  case SEEK_END: {
-    moveMethod = FILE_END;    
-  } break;
-  default: {
-    return -1;  // Invalid whence
-  } break;
-  }
-
-  f->pos = SetFilePointer(f->handle, offset, NULL, moveMethod);
-  if(f->pos == INVALID_SET_FILE_POINTER)
-    return -1;
-
-  return 0;
-#else
-  return -1;
-#endif //_WIN32
-}
-
-IO_DEF long int io_file_tell(Io_File *f) {
-#ifdef _WIN32
-  return (long int) f->pos;
-#else
-  return -1;
-#endif //_WIN32
-}
-
-IO_DEF void io_file_close(Io_File *f) {
-#ifdef _WIN32
-  CloseHandle(f->handle);
-#else
-#endif //_WIN32
-}
-
-
-IO_DEF size_t io_file_read(Io_File *f, void *ptr, size_t size, size_t count) {
-#ifdef _WIN32
-  DWORD bytes_read;
-  DWORD bytes_to_read = (DWORD) (size * count);
-
-  if(!ReadFile(f->handle, ptr, bytes_to_read, &bytes_read, NULL))
-    return 0;
-  f->pos += bytes_read;
-
-  return (size_t) (bytes_read / size);
-#else
-  return 0;
-#endif //_WIN32
-}
-
-IO_DEF size_t io_file_write(Io_File *f, void *ptr, size_t size, size_t nmemb) {
-#ifdef _WIN32
-  DWORD bytes_written;
-  DWORD bytes_to_write = (DWORD) (size * nmemb);
-  
-  if(!WriteFile(f->handle, ptr, bytes_to_write, &bytes_written, NULL))
-    return 0;
-
-  return (size_t) (bytes_written / size);
-#else
-  return 0;
-#endif //_WIN32
-}
-
-////////////////////////////////////////////////////////////////////////////////////////
-
-IO_DEF int io_last_error() {
-#ifdef _WIN32
-  return GetLastError();
-#else
-  return 0;
-#endif //_WIN32
-}
-
-IO_DEF const char *io_last_error_cstr() {
-#ifdef _WIN32
-  DWORD error = GetLastError();
-  static char buffer[1024];
-
-  FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM,
-		 NULL,
-		 error,
-		 MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-		 (LPSTR) &buffer,
-		 sizeof(buffer),
-		 NULL);
-  
-  return buffer;
-#else
-  return NULL;
-#endif //_WIN32
-}
-
-#endif //IO_IMPLEMENTATION
-
-#endif //IO_H
-#ifndef MF_DECODER_H
-#define MF_DECODER_H
-
-//CREDITS
-// - https://github.com/sipsorcery/mediafoundationsamples
-// - https://www.gamedev.net/articles/programming/general-and-gameplay-programming/decoding-audio-for-xaudio2-with-microsoft-media-foundation-r4280/
-
-// win32
-//   mingw: -lmf -lmfplat -lmfuuid -lmfreadwrite
-//   msvc : mf.lib mfplat.lib mfuuid.lib mfreadwrite.lib
-
-#include <stdbool.h>
-#include <mfapi.h>
-#include <mfplay.h>
-#include <mfreadwrite.h>
-
-#ifndef MF_DECODER_DEF
-#  define MF_DECODER_DEF static inline
-#endif //MF_DECODER_DEF
-
-typedef enum{
-    MF_DECODER_FMT_S16,
-    MF_DECODER_FMT_FLT,
-}MF_Decoder_Fmt;
-
-MF_DECODER_DEF bool mf_decoder_fmt_format_guid(const GUID **guid, MF_Decoder_Fmt fmt);
-MF_DECODER_DEF bool mf_decoder_fmt_bits_per_sample(int *bits, MF_Decoder_Fmt fmt);
-
-typedef struct{
-    IMFSourceReader *source_reader;
-    IMFMediaType *media_type;
-    IMFMediaType *output_media_type;
-    IMFMediaBuffer *media_buffer;
-    IMFByteStream *byte_stream;
-
-    IMFSample *audio_sample;
-    IMFSample *prev_audio_sample;
-
-    bool locked;
-    int sample_size;
-}MF_Decoder;
-
-MF_DECODER_DEF bool mf_decoder_slurp(const char *path, MF_Decoder_Fmt fmt, int *channels, int *sample_rate, unsigned char **samples, unsigned int *samples_count);
-MF_DECODER_DEF bool mf_decoder_slurp_memory(const unsigned char *memory, size_t memory_len, MF_Decoder_Fmt fmt, int *channels, int *sample_rate, unsigned char **out_samples, unsigned int *out_samples_count);
-MF_DECODER_DEF bool mf_decoder_slurp_impl(MF_Decoder *decoder, int *channels, int *sample_rate, unsigned char **out_samples, unsigned int *out_samples_count);
-
-MF_DECODER_DEF bool mf_decoder_init(MF_Decoder *decoder, const char *path, MF_Decoder_Fmt fmt, int *channels, int *sample_rate);
-MF_DECODER_DEF bool mf_decoder_init_memory(MF_Decoder *decoder, const unsigned char *memory, size_t memory_len, MF_Decoder_Fmt fmt, int *channels, int *sample_rate);
-MF_DECODER_DEF bool mf_decoder_init_impl(MF_Decoder *decoder, MF_Decoder_Fmt fmt, int *channels, int *sample_rate);
-
-MF_DECODER_DEF bool mf_decoder_decode(MF_Decoder *decoder, unsigned char **samples, unsigned int *out_samples);
-MF_DECODER_DEF void mf_decoder_free(MF_Decoder *decoder);
-
-#ifdef MF_DECODER_IMPLEMENTATION
-
-static bool mf_decoder_mf_startup = false;
-
-MF_DECODER_DEF bool mf_decoder_slurp_impl(MF_Decoder *decoder, int *channels, int *sample_rate, unsigned char **out_samples, unsigned int *out_samples_count) {
-  
-  unsigned int samples_count = 0;
-  unsigned int samples_cap = 5 * (*sample_rate) * (*channels);
-  unsigned char *samples = malloc(samples_cap * decoder->sample_size);
-  if(!samples) {
-    mf_decoder_free(decoder);
-    return false;
-  }
-
-  unsigned char *decoded_samples;
-  unsigned int decoded_samples_count;
-  while(mf_decoder_decode(decoder, &decoded_samples, &decoded_samples_count)) {
-
-    unsigned int new_samples_cap = samples_cap;
-    while(samples_count + decoded_samples_count > new_samples_cap) {
-      new_samples_cap *= 2;
-    }
-    if(new_samples_cap != samples_cap) {
-      samples_cap = new_samples_cap;
-      samples = realloc(samples, samples_cap * decoder->sample_size);
-      if(!samples) {
-	mf_decoder_free(decoder);
-	return false;
-      }
-    }
-    
-    memcpy(samples + samples_count * decoder->sample_size,
-	   decoded_samples,
-	   decoded_samples_count * decoder->sample_size);
-
-    samples_count += decoded_samples_count;
-  }
-
-  *out_samples = samples;
-  *out_samples_count = samples_count;
-
-  return true;
-}
-
-MF_DECODER_DEF bool mf_decoder_slurp(const char *path, MF_Decoder_Fmt fmt, int *channels, int *sample_rate, unsigned char **out_samples, unsigned int *out_samples_count) {
-  MF_Decoder decoder;
-  if(!mf_decoder_init(&decoder, path, fmt, channels, sample_rate)) {
-    return false;
-  }
-
-  if(!mf_decoder_slurp_impl(&decoder, channels, sample_rate, out_samples, out_samples_count)) {
-    return false;
-  }
-
-  mf_decoder_free(&decoder);
-  return true;
-}
-
-MF_DECODER_DEF bool mf_decoder_slurp_memory(const unsigned char *memory, size_t memory_len, MF_Decoder_Fmt fmt, int *channels, int *sample_rate, unsigned char **out_samples, unsigned int *out_samples_count) {
-  MF_Decoder decoder;
-  if(!mf_decoder_init_memory(&decoder, memory, memory_len, fmt, channels, sample_rate)) {
-    return false;
-  }
-
-  if(!mf_decoder_slurp_impl(&decoder, channels, sample_rate, out_samples, out_samples_count)) {
-    return false;
-  }
-
-  mf_decoder_free(&decoder);
-  return true;
-}
-
-MF_DECODER_DEF bool mf_decoder_init(MF_Decoder *decoder, const char *path, MF_Decoder_Fmt fmt, int *channels, int *sample_rate) {
-
-  if(!mf_decoder_mf_startup) {
-    if(MFStartup(MF_VERSION, 0) != S_OK) {
-      return false;
-    }
-
-    mf_decoder_mf_startup = true;
-  }
-
-  decoder->source_reader = NULL;
-  decoder->byte_stream = NULL;
-  
-  int num_wchars = MultiByteToWideChar(CP_UTF8, 0, path, -1, NULL, 0); 
-  wchar_t *my_wstring = (wchar_t *)malloc((num_wchars+1) * sizeof(wchar_t));
-  if(!my_wstring) {
-    return false;
-  }
-  MultiByteToWideChar(CP_UTF8, 0, path, -1, my_wstring, num_wchars);
-  my_wstring[num_wchars] = 0;
-
-  // SourceReader
-  HRESULT result = MFCreateSourceReaderFromURL(my_wstring,
-					       NULL,
-					       &decoder->source_reader);
-  free(my_wstring);
-  if(result != S_OK) {
-    return false;
-  }
-
-  return mf_decoder_init_impl(decoder, fmt, channels, sample_rate);
-}
-
-MF_DECODER_DEF bool mf_decoder_init_impl(MF_Decoder *decoder, MF_Decoder_Fmt fmt, int *channels, int *sample_rate) {
-
-  decoder->media_type = NULL;
-  decoder->output_media_type = NULL;
-  
-  // MediaType
-  if(decoder->source_reader->lpVtbl->GetCurrentMediaType(decoder->source_reader, (DWORD) MF_SOURCE_READER_FIRST_AUDIO_STREAM, &decoder->media_type) != S_OK) {
-    goto error;
-  }
-
-  if(decoder->source_reader->lpVtbl->SetStreamSelection(decoder->source_reader, (DWORD) MF_SOURCE_READER_FIRST_AUDIO_STREAM, TRUE) != S_OK) {
-    goto error;
-  }
-
-  // MediaType - Attributes
-  GUID major_type;
-  if(decoder->media_type->lpVtbl->GetMajorType(decoder->media_type, &major_type) != S_OK) {
-    goto error;
-  }
-    
-  if( memcmp(&major_type, &MFMediaType_Audio, sizeof(major_type)) != 0) {
-    goto error;
-  }
-    
-  UINT32 attr_count;
-  if(decoder->media_type->lpVtbl->GetCount(decoder->media_type, &attr_count) != S_OK) {
-    goto error;
-  }
-
-  bool got_channels = false;
-  bool got_sample_rate = false;
-  for(UINT32 i=0;i<attr_count;i++) {
-    GUID guid_id;
-    if(decoder->media_type->lpVtbl->GetItemByIndex(decoder->media_type, i, &guid_id, NULL) != S_OK) {
-      goto error;
-    }
-
-    MF_ATTRIBUTE_TYPE attr_type;
-    if(decoder->media_type->lpVtbl->GetItemType(decoder->media_type, &guid_id, &attr_type) != S_OK) {
-      goto error;
-    }
-
-    if( memcmp(&guid_id, &MF_MT_AUDIO_NUM_CHANNELS, sizeof(guid_id)) == 0 ) {
-	    
-      if(attr_type != MF_ATTRIBUTE_UINT32) {
-	goto error;
-      }
-
-      UINT32 value;
-      if(decoder->media_type->lpVtbl->GetUINT32(decoder->media_type, &guid_id, &value) != S_OK) {
-	goto error;
-      }
-
-      *channels = (int) value;
-      got_channels = true;
-    } else if(memcmp(&guid_id, &MF_MT_AUDIO_SAMPLES_PER_SECOND, sizeof(guid_id)) == 0 ) {
-
-      if(attr_type != MF_ATTRIBUTE_UINT32) {
-	goto error;
-      }
-
-      UINT32 value;
-      if(decoder->media_type->lpVtbl->GetUINT32(decoder->media_type, &guid_id, &value) != S_OK) {
-	goto error;
-      }
-
-      *sample_rate = (int) value;
-      got_sample_rate = true;
-    }
-  }
-
-  if(!got_channels || !got_sample_rate) {
-    return false;
-  }
-
-  // Output-MediaType
-  if( MFCreateMediaType(&decoder->output_media_type) != S_OK) {
-    goto error;
-  }    
-
-  if( decoder->output_media_type->lpVtbl->SetGUID(decoder->output_media_type, &MF_MT_MAJOR_TYPE, &MFMediaType_Audio) != S_OK) {
-    goto error;
-  }
-
-  int bits_per_sample;
-  if( !mf_decoder_fmt_bits_per_sample(&bits_per_sample, fmt) ) {
-    return false;
-  }
-  decoder->sample_size = bits_per_sample * (*channels) / 8;
-
-  const GUID *guid;
-  if( !mf_decoder_fmt_format_guid(&guid, fmt) ) {
-    goto error;
-  }
-
-  if( decoder->output_media_type->lpVtbl->SetGUID(decoder->output_media_type, &MF_MT_SUBTYPE, guid) != S_OK) {
-    goto error;
-  }    
-
-  if( decoder->source_reader->lpVtbl->SetCurrentMediaType(decoder->source_reader, MF_SOURCE_READER_FIRST_AUDIO_STREAM, NULL, decoder->output_media_type)) {
-    goto error;
-  }
-
-  decoder->locked = false;
-  decoder->prev_audio_sample = NULL;
-  return true;
-    
- error:
-  if(decoder->source_reader) decoder->source_reader->lpVtbl->Release(decoder->source_reader);
-  if(decoder->media_type) decoder->media_type->lpVtbl->Release(decoder->media_type);
-  if(decoder->output_media_type) decoder->output_media_type->lpVtbl->Release(decoder->output_media_type);
-  return false;
-}
-
-MF_DECODER_DEF bool mf_decoder_init_memory(MF_Decoder *decoder, const unsigned char *memory, size_t memory_len, MF_Decoder_Fmt fmt, int *channels, int *sample_rate) {
-
-  if(!mf_decoder_mf_startup) {
-    if(MFStartup(MF_VERSION, 0) != S_OK) {
-      return false;
-    }
-
-    mf_decoder_mf_startup = true;
-  }
-
-  decoder->source_reader = NULL;
-  decoder->byte_stream = NULL;
-  
-  if( MFCreateTempFile(
-		       MF_ACCESSMODE_READWRITE,
-		       MF_OPENMODE_DELETE_IF_EXIST,
-		       MF_FILEFLAGS_NONE,
-		       &decoder->byte_stream) != S_OK) {
-    goto error;
-  }
-  ULONG wrote_bytes;
-  if(decoder->byte_stream->lpVtbl->Write(decoder->byte_stream, memory, memory_len, &wrote_bytes) != S_OK) {
-    goto error;
-  }
-  if(decoder->byte_stream->lpVtbl->SetCurrentPosition(decoder->byte_stream, 0) != S_OK) {
-    goto error;
-  } 
-
-  // SourceReader
-  if(MFCreateSourceReaderFromByteStream(decoder->byte_stream,
-					NULL,
-					&decoder->source_reader) != S_OK) {
-    goto error;
-  }
-
-
-  return mf_decoder_init_impl(decoder, fmt, channels, sample_rate);
- error:
-  if(decoder->byte_stream) decoder->byte_stream->lpVtbl->Release(decoder->byte_stream);
-  return false;
-}
-
-MF_DECODER_DEF bool mf_decoder_decode(MF_Decoder *decoder, unsigned char **samples, unsigned int *out_samples) {
-
-    if(decoder->locked) {
-	if(decoder->media_buffer->lpVtbl->Unlock(decoder->media_buffer) != S_OK) {
-	    return false;
-	}
-
-	decoder->media_buffer->lpVtbl->Release(decoder->media_buffer);
-	if(decoder->prev_audio_sample) decoder->prev_audio_sample->lpVtbl->Release(decoder->prev_audio_sample);
-	decoder->prev_audio_sample = decoder->audio_sample;
-
-	decoder->locked = false;
-    }
-    
-    decoder->audio_sample = NULL;
-    DWORD stream_index, flags;
-    LONGLONG ll_audio_time_stamp;
-    if(decoder->source_reader->lpVtbl->ReadSample(decoder->source_reader,
-						  MF_SOURCE_READER_FIRST_AUDIO_STREAM,
-						  0,
-						  &stream_index,
-						  &flags,
-						  &ll_audio_time_stamp,
-						  &decoder->audio_sample) != S_OK) {
-	return false;
-    }
-
-
-    if( flags & (MF_SOURCE_READERF_ENDOFSTREAM
-		 | MF_SOURCE_READERF_NEWSTREAM
-		 | MF_SOURCE_READERF_NATIVEMEDIATYPECHANGED
-		 | MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED)) {
-	return false;
-    }
-
-    if(!decoder->audio_sample) {
-	return false;
-    }
-
-    decoder->media_buffer = NULL;
-    if(decoder->audio_sample->lpVtbl->
-       ConvertToContiguousBuffer(decoder->audio_sample, &decoder->media_buffer) != S_OK) {
-	return false;
-    }
-
-    DWORD samples_len_bytes;
-    if(decoder->media_buffer->lpVtbl->Lock(decoder->media_buffer, samples, NULL, &samples_len_bytes) != S_OK) {
-	return false;
-    }
-    *out_samples = samples_len_bytes / decoder->sample_size;
-
-    decoder->locked = true;
-    
-    return true;
-}
-
-MF_DECODER_DEF void mf_decoder_free(MF_Decoder *decoder) {
-
-    if(decoder->locked) {
-	decoder->media_buffer->lpVtbl->Unlock(decoder->media_buffer);
-	decoder->locked = false;
-    }
-    
-    decoder->source_reader->lpVtbl->Release(decoder->source_reader);
-    decoder->output_media_type->lpVtbl->Release(decoder->output_media_type);
-    decoder->media_type->lpVtbl->Release(decoder->media_type);
-    if(decoder->byte_stream) decoder->byte_stream->lpVtbl->Release(decoder->byte_stream);
-}
-
-MF_DECODER_DEF bool mf_decoder_fmt_format_guid(const GUID **guid, MF_Decoder_Fmt fmt) {
-    switch(fmt) {
-    case MF_DECODER_FMT_S16: {
-	*guid = &MFAudioFormat_PCM;
-	return true;
-    } break;
-    case MF_DECODER_FMT_FLT: {
-	//*guid = &MFAudioFormat_FLT;
-	//return true;
-	return false;
-    } break;
-    default: {
-	return false;
-    } break;
-    }
-}
-
-MF_DECODER_DEF bool mf_decoder_fmt_bits_per_sample(int *bits, MF_Decoder_Fmt fmt) {
-    switch(fmt) {
-    case MF_DECODER_FMT_S16: {
-	*bits = 16;
-	return true;
-    } break;
-    case MF_DECODER_FMT_FLT: {
-	*bits = 32;
-	return true;
-    } break;
-    default: {
-	return false;	
-    } break;
-    }
-
-}
-
-#endif //MF_DECODER_IMPLEMENTATION
-
-#endif //MF_DECODER_H
-#ifndef MP4_H
-#define MP4_H
-
-//https://web.archive.org/web/20180219054429/http://l.web.umkc.edu/lizhu/teaching/2016sp.video-communication/ref/mp4.pdf
-
-#ifndef TYPES_H
-#define TYPES_H
-
-#include <stdint.h>
-#include <stdbool.h>
-
-typedef uint8_t u8;
-typedef char s8; // because of mingw warning not 'int8_t'
-typedef uint16_t u16;
-typedef int16_t s16;
-typedef uint32_t u32;
-typedef int32_t s32;
-typedef uint64_t u64;
-typedef int64_t s64;
-
-typedef float f32;
-typedef double f64;
-
-#define return_defer(n) do{			\
-    result = (n);				\
-    goto defer;					\
-  }while(0)
-
-#define errorf(...) do{						\
-    fflush(stdout);						\
-    fprintf(stderr, "%s:%d:ERROR: ", __FILE__, __LINE__);	\
-    fprintf(stderr,  __VA_ARGS__ );				\
-    fprintf(stderr, "\n");					\
-    fflush(stderr);						\
-  }while(0)
-
-#define panicf(...) do{						\
-    errorf(__VA_ARGS__);					\
-    exit(1);							\
-  }while(0)
-
-#endif // TYPES_H
-
-#ifndef MP4_DEF
-#  define MP4_DEF static inline
-#endif // MP4_DEF
-
-#ifndef MP4_LOG
-#  ifdef MP4_QUIET
-#    define MP4_LOG(...)
-#  else
-#    include <stdio.h>
-#    define MP4_LOG(...) fprintf(stderr, "MP4_LOG: "); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n")
-#  endif // MP4_QUIET
-#endif // MP4_QUIET
-
-typedef enum{
-  MP4_TYPE_NONE = 0,
-  MP4_TYPE_FTYP,
-  MP4_TYPE_MOOV,
-  MP4_TYPE_MVHD,
-  MP4_TYPE_MVEX,
-  MP4_TYPE_TREX,
-  MP4_TYPE_TRAK,
-  MP4_TYPE_TKHD,
-  MP4_TYPE_MDIA,
-  MP4_TYPE_MDHD,
-  MP4_TYPE_HDLR,
-  MP4_TYPE_MINF,
-  MP4_TYPE_DINF,
-  MP4_TYPE_DREF,
-  MP4_TYPE_STBL,
-  MP4_TYPE_STSD,
-  MP4_TYPE_STTS,
-  MP4_TYPE_STSC,
-  MP4_TYPE_STCO,
-  MP4_TYPE_STSZ,
-  MP4_TYPE_SMHD,
-  MP4_TYPE_SIDX,
-  MP4_TYPE_MOOF,
-  MP4_TYPE_MFHD,
-  MP4_TYPE_TRAF,
-  MP4_TYPE_TFHD,
-  MP4_TYPE_TFDT,
-  MP4_TYPE_TRUN,
-  MP4_TYPE_MDAT,
-  MP4_TYPE_UDTA,
-}Mp4_Type;
-
-typedef char Mp4_Word[5]; // 4 + '\0'
-
-typedef enum {
-  MP4_MEDIA_TYPE_NONE = 0,
-  MP4_MEDIA_TYPE_AUDIO,
-  MP4_MEDIA_TYPE_VIDEO,
-}Mp4_Media_Type;
-
-typedef enum {
-  MP4_CODEC_TYPE_NONE = 0,
-  MP4_CODEC_TYPE_AAC,
-  MP4_CODEC_TYPE_H264,
-  MP4_CODEC_TYPE_UNKNOWN,
-}Mp4_Codec_Type;
-
-typedef struct{
-  u8 *data;
-  u64 len;
-}Mp4;
-
-typedef struct{
-  u32 track_id;  
-  Mp4_Media_Type type;
-  Mp4_Codec_Type codec;
-  Mp4_Word coding_name;
-  f64 duration; // in seconds
-  
-  bool tables_are_empty;
-
-  u32 sample_count; // stsz
-  Mp4 sample_sizes;
-
-  u32 chunk_count; // stco
-  u32 chunk_index;
-  Mp4 chunk_offsets;
-  
-  u32 entry_count; // stsc
-  Mp4 entries;
-  u32 current_sample_count;
-
-  //Audio
-  u16 channels;
-  u32 sample_rate;
-
-  //Video
-  u16 width, height;
-}Mp4_Media;
-
-#define mp4_from(data, len) (Mp4) {(data), (len)}
-
-MP4_DEF bool mp4_next_media(Mp4 *m, Mp4_Media *media);
-MP4_DEF bool mp4_has_audio(Mp4 m, Mp4_Media *media);
-MP4_DEF bool mp4_next_fragmented_data(Mp4 *m, u32 track_id, u8 **data, u64 *data_len);
-MP4_DEF bool mp4_media_next_data(Mp4_Media *media, u32 *offset, u64 *len);
-
-MP4_DEF bool mp4_find(Mp4 m, Mp4_Type type, Mp4 *dest);
-MP4_DEF bool mp4_find_next(Mp4 *m, Mp4_Type type, Mp4 *dest);
-MP4_DEF bool mp4_next(Mp4 *m, u32 *size, Mp4_Type *type);
-
-const char *mp4_type_name(Mp4_Type t);
-
-#ifdef MP4_IMPLEMENTATION
-
-// 0xaa 0xbb 0xcc 0xdd 0xee 0xff 0x11 0x22
-//    |
-//    v
-// 0x22 0x11 0xff 0xee 0xdd 0xcc 0xbb 0xaa
-static inline u64 mp4_swap_u64(u64 in) {
-  return
-    ((in & 0x00000000000000ff) << 56) |
-    ((in & 0x000000000000ff00) << 48) |
-    ((in & 0x0000000000ff0000) << 32) |
-    ((in & 0x00000000ff000000) <<  8) |    
-    ((in & 0x000000ff00000000) >>  8) |
-    ((in & 0x0000ff0000000000) >> 32) |
-    ((in & 0x00ff000000000000) >> 48) |
-    ((in & 0xff00000000000000) >> 56);
-}
-
-// 0xaa 0xbb 0xcc 0xdd
-//    |
-//    v
-// 0xdd 0xcc 0xbb 0xaa
-static inline u32 mp4_swap_u32(u32 in) {
-  return
-    ((in & 0x000000ff) << 24) |
-    ((in & 0x0000ff00) << 8) |
-    ((in & 0x00ff0000) >> 8) |
-    ((in & 0xff000000) >> 24);
-}
-
-// 0xaa 0xbb
-// |
-// v
-// 0xbb 0xaa
-static inline u16 mp4_swap_u16(u16 in) {
-  return
-    ((in & 0x00ff) << 8) |
-    ((in & 0xff00) >> 8);
-}
-
-#define __MP4_READ(ptr, m, n) do{					\
-    if((m).len < (n)) {							\
-      MP4_LOG("Unexpected eof");					\
-      return false;							\
-    }									\
-    memcpy((ptr), (m).data, (n)); (m).data += (n); (m).len -= (n);	\
-  }while(0)
-#define __MP4_DISCARD(m, n) do{			\
-    if((m).len < (n)) {				\
-      MP4_LOG("Unexpected eof");		\
-      return false;				\
-    }						\
-    (m).data += (n); (m).len -= (n);		\
-  }while(0)
-#define __MP4_READ_U64(ptr, m) do{		\
-    __MP4_READ(ptr, m, 8);			\
-    *ptr = mp4_swap_u64(*(ptr));		\
-  }while(0)
-#define __MP4_READ_U32(ptr, m) do{		\
-    __MP4_READ(ptr, m, 4);			\
-    *ptr = mp4_swap_u32(*(ptr));		\
-  }while(0)
-#define __MP4_READ_U16(ptr, m) do{		\
-    __MP4_READ(ptr, m, 2);			\
-    *ptr = mp4_swap_u16(*(ptr));		\
-  }while(0)
-
-
-#ifndef return_defer
-#  define return_defer(n) do{ result = (n); goto defer; }while(0)
-#endif // return_defer
-
-static const Mp4_Word mp4_box_names[] = {
-  "NONE", "ftyp", "moov", "mvhd", "mvex", "trex", "trak", "tkhd", "mdia", "mdhd", "hdlr", "minf", "dinf", "dref", "stbl", "stsd", "stts", "stsc", "stco", "stsz", "smhd", "sidx", "moof", "mfhd", "traf", "tfhd", "tfdt", "trun", "mdat", "udta"
-};
-
-static u64 mp4_box_names_len = sizeof(mp4_box_names) / sizeof(*mp4_box_names);
-
-#define mp4_type_name(t) mp4_box_names[(t)]
-
-MP4_DEF bool mp4_next_media(Mp4 *m, Mp4_Media *media) {
-
-  u32 size;
-  Mp4_Type type;
-  if(!mp4_next(m, &size, &type)) {
-    return false;
-  }
-
-  Mp4 trak;
-  if(type == MP4_TYPE_FTYP) {        // Beginning of FILE. Advance to 'moov'. Advance to 'trak'
-    if(!mp4_find(*m, MP4_TYPE_MOOV, m)) {
-      MP4_LOG("Can not find 'moov' in mp4. Mp4-File is propably damaged");
-      return false;
-    }
-
-    if(!mp4_find_next(m, MP4_TYPE_TRAK, &trak)) {
-      return false;
-    }
-  } else if(type == MP4_TYPE_TRAK) { // Inside 'moov'. Update 'trak'
-    trak = mp4_from(m->data - size + 8, size - 8);
-  } else {                           // Inside 'moov'. Advance to 'trak'
-    if(!mp4_find_next(m, MP4_TYPE_TRAK, &trak)) {
-      return false;
-    }
-  }
-
-  Mp4 tkhd;
-  if(!mp4_find(trak, MP4_TYPE_TKHD, &tkhd)) {
-    MP4_LOG("Can not find 'tkhd' inside 'trak'. Mp4-File is propably damaged");
-    return false;
-  }
-
-  // 'TrackHeaderBox'
-  // only look for track_id, for now
-  u8 version;
-  __MP4_READ(&version, tkhd, 1);
-
-  if(version == 1) {
-    __MP4_DISCARD(tkhd, 3 + 8 + 8);
-  } else { // version == 0
-    __MP4_DISCARD(tkhd, 3 + 4 + 4);
-  }
-      
-  __MP4_READ_U32(&media->track_id, tkhd);
-
-  Mp4 mdia;
-  if(!mp4_find(trak, MP4_TYPE_MDIA, &mdia)) {
-    MP4_LOG("Can not find 'mdia' inside 'trak'. Mp4-File is propably damaged");
-    return false;
-  }
-
-  Mp4 mdhd;
-  if(!mp4_find(mdia, MP4_TYPE_MDHD, &mdhd)) {
-    MP4_LOG("Can not find 'mdhd' inside 'mdia'. Mp4-File is propably damaged");
-    return false;
-  }
-
-  // 'MediaHeaderBox'
-  // only look for duration, for now
-
-  __MP4_READ(&version, mdhd, 1);
-  
-  u32 timescale;    //5198848  //44100
-  if(version == 1) {
-    __MP4_DISCARD(mdhd, 3 + 8 + 8);
-    __MP4_READ_U32(&timescale, mdhd);
-    
-    u64 duration;
-    __MP4_READ_U64(&duration, mdhd);
-    media->duration = (f64) duration / (f64) timescale;
-  } else { // version == 0
-    __MP4_DISCARD(mdhd, 3 + 4 + 4);
-    __MP4_READ_U32(&timescale, mdhd);
-    
-    u32 duration;
-    __MP4_READ_U32(&duration, mdhd);
-    media->duration = (f64) duration / (f64) timescale;
-  }  
-
-  Mp4 hdlr;
-  if(!mp4_find(mdia, MP4_TYPE_HDLR, &hdlr)) {
-    MP4_LOG("Can not find 'hdlr' inside 'mdia'. Mp4-File is propably damaged");
-    return false;
-  }
-  
-  // 'HandlerBox'
-  // only look for handler_type, for now
-  __MP4_DISCARD(hdlr, 4 + 4);
-
-  u8 buf[4];
-  __MP4_READ(buf, hdlr, 4);
-  if(memcmp(buf, "soun", 4) == 0) {
-    media->type = MP4_MEDIA_TYPE_AUDIO;
-  } else if(memcmp(buf, "vide", 4) == 0) {
-    media->type = MP4_MEDIA_TYPE_VIDEO;
-  } else {
-    MP4_LOG("Unknown handler_type: '%.*s'", 4, buf);
-    return false;
-  }
-
-  Mp4 minf;
-  if(!mp4_find(mdia, MP4_TYPE_MINF, &minf)) {
-    MP4_LOG("Can not find 'minf' inside 'mdia'. Mp4-File is propably damaged");
-  }
-
-  Mp4 stbl;
-  if(!mp4_find(minf, MP4_TYPE_STBL, &stbl)) {
-    MP4_LOG("Can not find 'stbl' inside 'minf'. Mp4-File is propably damaged");
-  }
-
-  Mp4 stsd;
-  if(!mp4_find(stbl, MP4_TYPE_STSD, &stsd)) {
-    MP4_LOG("Can not find 'stsd' inside 'stbl'. Mp4-File is propably damaged");
-  }
-
-  // 'SampleDescriptionBox'
-  // This my be more complicated than this. A Sample Description Box (stsd) may contain
-  // multiple entries. This considers only the first one.
-  
-  // Depending on the 'coding_name', the 'AudioSampleEntry' or 'VideoSampleEntry' may
-  // contain more box's. 
-
-  __MP4_DISCARD(stsd, 4);
-  u32 entry_count;
-  __MP4_READ_U32(&entry_count, stsd);
-  if(entry_count != 1) {
-    MP4_LOG("There are multiple entries in the Sample Description Box (stsd). entry_count: %u",
-	    entry_count);
-  }
-  
-  if(media->type == MP4_MEDIA_TYPE_AUDIO) {
-    // 'AudioSampleEntry'
-    // only look for coding_name, channel_count and sample_rate, for now
-            
-    __MP4_DISCARD(stsd, 4);
-    __MP4_READ(media->coding_name, stsd, 4);
-    media->coding_name[4] = '\0';
-    __MP4_DISCARD(stsd, 6 + 2 + 8);
-    __MP4_READ_U16(&media->channels, stsd);
-    __MP4_DISCARD(stsd, 4 + 2);
-    __MP4_READ_U32(&media->sample_rate, stsd);
-    media->sample_rate >>= 16;
-    
-  } else if(media->type == MP4_MEDIA_TYPE_VIDEO) {
-    // 'VideoSampleEntry'
-    // only look for codingname, width, and height, for now
-
-    __MP4_DISCARD(stsd, 4);
-    __MP4_READ(media->coding_name, stsd, 4);
-    media->coding_name[4] = '\0';
-    __MP4_DISCARD(stsd, 6 + 2 + 4 + 12);
-    __MP4_READ_U16(&media->width, stsd);
-    __MP4_READ_U16(&media->height, stsd);
-    __MP4_DISCARD(stsd, 4 + 4 + 4 + 2);
-    
-  } else {
-    MP4_LOG("Unreachable state. Update your code");
-  }
-
-  // TODO: make this an cstr-array. Just like mp4-boxs
-  if(strcmp(media->coding_name, "mp4a") == 0) {
-    media->codec = MP4_CODEC_TYPE_AAC;
-  } else if(strcmp(media->coding_name, "avc1") == 0) {
-    media->codec = MP4_CODEC_TYPE_H264;
-  } else {
-    media->codec = MP4_CODEC_TYPE_UNKNOWN;
-    MP4_LOG("Unknown coding_name: '%s'", media->coding_name);
-  }
-
-  Mp4 stsz;
-  if(!mp4_find(stbl, MP4_TYPE_STSZ, &stsz)) {
-    MP4_LOG("Can not find 'stsz' inside 'stbl'. Mp4-File is propably damaged");
-  }
-
-  // 'SampleSizeBox'
-  // only look for sample_count and sample_sizes, for now
-
-  __MP4_DISCARD(stsz, 4);
-  u32 sample_size;
-  __MP4_READ_U32(&sample_size, stsz);
-  __MP4_READ_U32(&media->sample_count, stsz);
-
-  if(sample_size != 0) {
-    MP4_LOG("Unimplemented: sample_size != 0, is not handled inside 'SampleSizeBox'");
-    return false;
-  }
-  if(media->sample_count > 0) {
-    media->sample_sizes = mp4_from(stsz.data, media->sample_count * 4);
-  }
-
-  Mp4 stco;
-  if(!mp4_find(stbl, MP4_TYPE_STCO, &stco)) {
-    MP4_LOG("Can not find 'stco' inside 'stbl'. Mp4-File is propably damaged");
-  }
-
-  // 'ChunkOffsetBox'
-  // look for entry_count and chunk_offset's
-
-  __MP4_DISCARD(stco, 4);
-  __MP4_READ_U32(&media->chunk_count, stco);
-  if(media->chunk_count > 0) {
-    media->chunk_index = 0;
-    media->chunk_offsets = mp4_from(stco.data, media->chunk_count * 4);
-  }
-
-  Mp4 stsc;
-  if(!mp4_find(stbl, MP4_TYPE_STSC, &stsc)) {
-    MP4_LOG("Can not find 'stco' inside 'stbl'. Mp4-File is propably damaged");
-  }
-
-  // 'SampleToChunkBox'
-  // look for entry_count and entries
-
-  __MP4_DISCARD(stsc, 4);
-  __MP4_READ_U32(&media->entry_count, stsc);
-  if(media->entry_count > 0) {
-    media->entries = mp4_from(stsc.data, media->entry_count * 4 * 3);
-    __MP4_DISCARD(media->entries, 4);
-    __MP4_READ_U32(&media->current_sample_count, media->entries);
-    __MP4_DISCARD(media->entries, 4);
-
-  }
-
-  // Assume that you than can find 'moof's and 'mdat's
-  media->tables_are_empty =
-    media->sample_count == 0 &&
-    media->entry_count == 0 &&
-    media->chunk_count == 0;
-
-  return true;
-}
-
-MP4_DEF bool mp4_has_audio(Mp4 m, Mp4_Media *media) {
-
-  media->type = MP4_MEDIA_TYPE_NONE;
-  while(media->type != MP4_MEDIA_TYPE_AUDIO && mp4_next_media(&m, media)) ;
-  if(media->type == MP4_MEDIA_TYPE_AUDIO) {
-    return true;
-  } else {
-    return false;
-  }
-}
-
-MP4_DEF bool mp4_next_fragmented_data(Mp4 *m, u32 track_id, u8 **data, u64 *data_len) {
-
-  u32 current_track_id;
-  while(m->len) {
-    Mp4 moof;
-    if(!mp4_find_next(m, MP4_TYPE_MOOF, &moof)) {
-      return false;
-    }
-
-    Mp4 traf;
-    if(!mp4_find(moof, MP4_TYPE_TRAF, &traf)) {
-      MP4_LOG("Exepcted 'traf' inside 'moof'");
-      return false;
-    }
-
-    Mp4 tfhd;
-    if(!mp4_find(traf, MP4_TYPE_TFHD, &tfhd)) {
-      MP4_LOG("Can not find 'tfhd' inside 'traf'. Mp4-File is propably damaged");
-      return false;
-    }
-
-    // only look for handler_type, for now
-    __MP4_DISCARD(tfhd, 4);
-    __MP4_READ_U32(&current_track_id, tfhd);
-
-    if(current_track_id == track_id) {
-      break;
-    }
-  }
-  if(!m->len) {
-    return false;
-  }
-
-  Mp4 mdat;
-  if(!mp4_find_next(m, MP4_TYPE_MDAT, &mdat)) {
-    return false;
-  }
-  *data = mdat.data;
-  *data_len = mdat.len;
-  
-  return true;
-}
-
-MP4_DEF bool mp4_media_next_data(Mp4_Media *media, u32 *offset, u64 *len) {
-  if(media->chunk_index == media->chunk_count) {
-    return false;
-  }
-
-  // Consume chunk_offset  
-  __MP4_READ_U32(offset, media->chunk_offsets);
-  media->chunk_index++; 
-
-  // Peek sample_entry
-  u32 first_chunk, sample_count;
-  bool could_peek = media->entries.len > 0;
-  if(could_peek) {
-    __MP4_READ_U32(&first_chunk, media->entries);
-    __MP4_READ_U32(&sample_count, media->entries);
-    __MP4_DISCARD(media->entries, 4);
-  }
-
-  // Look at fist 'sample_entry'.
-  if( could_peek &&
-      media->chunk_index < first_chunk ) {   // 'first_chunk' is indexed from 1
-
-    // If 'first_chunk' applies to 'chunk_index',
-    // then 'media.current_sample_count' is valid
-
-    media->entries.data -= 12; media->entries.len += 12;
-  } else {
-
-    // If 'first_chunk' does not apply to 'chunk_index',
-    // then update 'media.current_sample_count'.
-
-    media->current_sample_count = sample_count;
-  }
-
-  *len = 0;
-  u32 sample_size;
-  for(u32 i=0;i<media->current_sample_count;i++) {
-    if(media->sample_count == 0) {
-      MP4_LOG("Media.sample_count underflows. Something is wrong");
-      return false;
-    }
-
-    __MP4_READ_U32(&sample_size, media->sample_sizes);
-    media->sample_count--;
-    *len += (u64) sample_size;
-  }
-
-  return true;
-}
-
-MP4_DEF bool mp4_find(Mp4 m, Mp4_Type type, Mp4 *dest) {
-  Mp4_Type t = MP4_TYPE_NONE;
-
-  u32 size = 0;
-  while(t != type && mp4_next(&m, &size, &t)) ;
-  if(t != type) {
-    return false;
-  }
-
-  *dest = mp4_from(m.data - size + 8, size - 8);
-  return true;
-}
-
-MP4_DEF bool mp4_find_next(Mp4 *m, Mp4_Type type, Mp4 *dest) {
-  Mp4_Type t = MP4_TYPE_NONE;
-
-  u32 size = 0;
-  while(t != type && mp4_next(m, &size, &t)) ;
-  if(t != type) {
-    return false;
-  }
-
-  *dest = mp4_from(m->data - size + 8, size - 8);
-  return true;
-
-}
-
-MP4_DEF bool mp4_next(Mp4 *m, u32 *size, Mp4_Type *t) {
-
-  if(m->len < 8) {
-    return false;
-  }
-
-  // Get Box-Size
-  memcpy(size, m->data, 4);
-  *size = mp4_swap_u32(*size);
-
-  // Get Box-Name
-  Mp4_Word word;
-  memcpy(word, m->data + 4, 4);
-
-  // Advance
-  m->data += *size;
-  m->len  -= *size;    
-
-  // Lookup Box-Name
-  bool found = false;
-  for(u64 i=0;!found && i<mp4_box_names_len;i++) {
-    if(memcmp(mp4_box_names[i], word, 4) == 0) {
-      *t = (Mp4_Type) i;
-      found = true;
-    }
-  }
-
-  if(!found) {
-    MP4_LOG("Unknown MP4-Box: '%.*s'", 4, word);
-  }
-  
-  return found;
-}
-
-#endif // MP4_IMPLEMENTATION
-
-#endif // MP4_H
-#ifndef SPECTRUM_H
-#define SPECTRUM_H
-
-#include <string.h>
-#include <math.h>
-#include <assert.h>
-
-#ifndef SPECTRUM_DEF
-#  define SPECTRUM_DEF static inline
-#endif // SPECTRUM_DEF
-
-#define SPECTRUM_N 8192
-#ifndef PI
-#  define PI 3.141592653589793f
-#endif //PI
-
-typedef struct{
-  float real;
-  float imag;
-}Spectrum_Complex;
-
-SPECTRUM_DEF Spectrum_Complex spectrum_complex_add(Spectrum_Complex za, Spectrum_Complex zb);
-SPECTRUM_DEF Spectrum_Complex spectrum_complex_sub(Spectrum_Complex za, Spectrum_Complex zb);
-SPECTRUM_DEF Spectrum_Complex spectrum_complex_mul(Spectrum_Complex za, Spectrum_Complex zb);
-
-typedef struct{
-  float in_raw[SPECTRUM_N];
-  float in_win[SPECTRUM_N];
-  Spectrum_Complex out_raw[SPECTRUM_N];
-  float out_log[SPECTRUM_N];
-  float out_smooth[SPECTRUM_N];
-  float out_smear[SPECTRUM_N];
-
-  size_t m;
-}Spectrum;
-
-SPECTRUM_DEF void spectrum_push(Spectrum *s, float frame);
-SPECTRUM_DEF void spectrum_analyze(Spectrum *s, float dt);
-
-SPECTRUM_DEF void spectrum_fft(float in[], size_t stride, Spectrum_Complex out[], size_t n);
-SPECTRUM_DEF float spectrum_amp(Spectrum_Complex z);
-
-#ifdef SPECTRUM_IMPLEMENTATION
-
-
-SPECTRUM_DEF Spectrum_Complex spectrum_complex_add(Spectrum_Complex za, Spectrum_Complex zb) {
-  float a = za.real;
-  float b = za.imag;
-  float c = zb.real;
-  float d = zb.imag;
-
-  return (Spectrum_Complex) { .real = (a+c), .imag = (b+d)};
-}
-
-SPECTRUM_DEF Spectrum_Complex spectrum_complex_sub(Spectrum_Complex za, Spectrum_Complex zb) {
-  float a = za.real;
-  float b = za.imag;
-  float c = zb.real;
-  float d = zb.imag;
-
-  return (Spectrum_Complex) { .real = (a-c), .imag = (b-d)};
-  
-}
-
-SPECTRUM_DEF Spectrum_Complex spectrum_complex_mul(Spectrum_Complex za, Spectrum_Complex zb) {
-  float a = za.real;
-  float b = za.imag;
-  float c = zb.real;
-  float d = zb.imag;
-
-  return (Spectrum_Complex) { .real = (a*c - b*d), .imag = (a*d + b*c)};
-}
-
-/////////////////////////////////////////////////////////////////////////////////
-
-SPECTRUM_DEF void spectrum_push(Spectrum *s, float frame) {
-  memmove(s->in_raw, s->in_raw + 1, (SPECTRUM_N - 1)*sizeof(s->in_raw[0]));
-  s->in_raw[SPECTRUM_N-1] = frame;
-}
-
-SPECTRUM_DEF void spectrum_analyze(Spectrum *s, float dt) {
-  // Apply the Hann Window on the Input - https://en.wikipedia.org/wiki/Hann_function
-  for (size_t i = 0; i < SPECTRUM_N; ++i) {
-    float t = (float)i/(SPECTRUM_N - 1);
-    float hann = 0.5 - 0.5*cosf(2*PI*t);
-    s->in_win[i] = s->in_raw[i]*hann;
-  }
-
-  // FFT
-  spectrum_fft(s->in_win, 1, s->out_raw, SPECTRUM_N);
-
-  // "Squash" into the Logarithmic Scale
-  float step = 1.06;
-  float lowf = 1.0f;
-  size_t m = 0;
-  float max_amp = 1.0f;
-  for (float f = lowf; (size_t) f < SPECTRUM_N/2; f = ceilf(f*step)) {
-    float f1 = ceilf(f*step);
-    float a = 0.0f;
-    for (size_t q = (size_t) f; q < SPECTRUM_N/2 && q < (size_t) f1; ++q) {
-      float b = spectrum_amp(s->out_raw[q]);
-      if (b > a) a = b;
-    }
-    if (max_amp < a) max_amp = a;
-    s->out_log[m++] = a;
-  }
-
-  // Normalize Frequencies to 0..1 range
-  for (size_t i = 0; i < m; ++i) {
-    s->out_log[i] /= max_amp;
-  }
-
-  // Smooth out and smear the values
-  for (size_t i = 0; i < m; ++i) {
-    float smoothness = 9;
-    if(isnan(s->out_smooth[i])) s->out_smooth[i] = 0;
-    s->out_smooth[i] += (s->out_log[i] - s->out_smooth[i])*smoothness*dt;
-    float smearness = 3;
-    s->out_smear[i] += (s->out_smooth[i] - s->out_smear[i])*smearness;
-  }
-
-  s->m = m;
-}
-
-SPECTRUM_DEF void spectrum_fft(float in[], size_t stride, Spectrum_Complex out[], size_t n) {
-  assert(n > 0);
-
-  if (n == 1) {
-    out[0].real = in[0];
-    out[0].imag = 0.0f;
-    return;
-  }
-
-  spectrum_fft(in, stride*2, out, n/2);
-  spectrum_fft(in + stride, stride*2,  out + n/2, n/2);
-
-  for (size_t k = 0; k < n/2; ++k) {
-    float t = (float)k/n;
-    float x = -2*PI*t;
-    Spectrum_Complex v =
-      spectrum_complex_mul((Spectrum_Complex) { .real=cosf(x), .imag=sinf(x) }, out[k + n/2]);
-    Spectrum_Complex e = out[k];
-    out[k]       = spectrum_complex_add(e, v);
-    out[k + n/2] = spectrum_complex_sub(e, v);
-  }
-}
-
-SPECTRUM_DEF float spectrum_amp(Spectrum_Complex z) {
-  float a = z.real;
-  float b = z.imag;
-  return logf(a*a + b*b);
-}
-
-
-#endif // SPECTRUM_IMPLEMENTATION
-
-#endif // SPECTRUM_H
-#ifndef STRING_H
-#define STRING_H
-
-#ifndef TYPES_H
-#define TYPES_H
-
-#include <stdint.h>
-#include <stdlib.h>
-#include <stdbool.h>
-
-typedef uint8_t u8;
-typedef char s8; // because of mingw warning not 'int8_t'
-typedef uint16_t u16;
-typedef int16_t s16;
-typedef uint32_t u32;
-typedef int32_t s32;
-typedef uint64_t u64;
-typedef int64_t s64;
-
-typedef float f32;
-typedef double f64;
-
-#define return_defer(n) do{			\
-    result = (n);				\
-    goto defer;					\
-  }while(0)
-
-#define errorf(...) do{						\
-    fflush(stdout);						\
-    fprintf(stderr, "%s:%d:ERROR: ", __FILE__, __LINE__);	\
-    fprintf(stderr,  __VA_ARGS__ );				\
-    fprintf(stderr, "\n");					\
-    fflush(stderr);						\
-  }while(0)
-
-#define panicf(...) do{						\
-    errorf(__VA_ARGS__);					\
-    exit(1);							\
-  }while(0)
-
-#endif // TYPES_H
-
-#ifndef STRING_DEF
-#  define STRING_DEF static inline
-#endif // STRING_DEF
-
-typedef struct{
-  const char *data;
-  u64 len;
-}string;
-
-
-#define str_fmt "%.*s"
-#define str_arg(s) (int) (s).len, (s).data
-
-#define string_from(d, l) (string) { (d), (l)}
-#define string_from_cstr(cstr) (string) { (cstr), strlen(cstr) }
-#define string_from_cstr2(cstr, cstr_len) (string) { (cstr), (cstr_len) }
-#define string_to_cstr(s) ((char *) (memcpy(memset(_alloca((s).len + 1), 0, s.len + 1), (s).data, (s).len)) )
-string string_from_u64(u64 n);
-
-#define string_free(s) free((char *) (s).data)
-
-STRING_DEF bool string_copy(string s, string *d);
-STRING_DEF bool string_copy_cstr(const char *cstr, string *d);
-STRING_DEF bool string_copy_cstr2(const char *cstr, u64 cstr_len, string *d);
-
-STRING_DEF s32 string_index_of(string s, const char *needle);
-STRING_DEF s32 string_index_of_off(string s, u64 off, const char *needle);
-STRING_DEF bool string_substring(string s, u64 start, u64 len, string *d);
-STRING_DEF bool string_chop_by(string *s, const char *delim, string *d);
-
-#define STRING_BUILDER_DEFAULT_CAP 256
-
-typedef struct{
-  char *data;
-  u64 len;
-  u64 cap;
-}string_builder;
-
-#define string_builder_free(sb) free((sb).data);
-
-STRING_DEF bool string_builder_append(string_builder *sb, const char *data, size_t data_len);
-STRING_DEF bool string_builder_to_string(string_builder *sb, string *s);
-
-#ifdef STRING_IMPLEMENTATION
-
-#define STRING_FROM_U_CAP 32
-
-static string string_from_u64_impl(char *space, u64 n) {
-  u64 m = snprintf(space, STRING_FROM_U_CAP, "%llu", n);
-  return (string) { space, m };
-}
-
-#define string_from_u64(n) string_from_u64_impl(_alloca(STRING_FROM_U_CAP), n)
-
-STRING_DEF bool string_copy(string s, string *d) {
-  return string_copy_cstr2(s.data, s.len, d);
-}
-
-STRING_DEF bool string_copy_cstr(const char *cstr, string *d) {
-  return string_copy_cstr2(cstr, strlen(cstr), d);
-}
-
-STRING_DEF bool string_copy_cstr2(const char *cstr, u64 cstr_len, string *d) {
-  char *data = malloc(cstr_len);
-  if(!data) return false;
-  memcpy(data, cstr, cstr_len);
-  d->data = (const char *) data;
-  d->len  = cstr_len;
-  return true;
-}
-
-#define string_substring_impl(s, start, len) (string) { (s).data + start, len }
-
-static int string_index_of_impl(const char *haystack, u64 haystack_size, const char* needle, u64 needle_size) {
-  if(needle_size > haystack_size) {
-    return -1;
-  }
-  haystack_size -= needle_size;
-  u64 i, j;
-  for(i=0;i<=haystack_size;i++) {
-    for(j=0;j<needle_size;j++) {
-      if(haystack[i+j] != needle[j]) {
-	break;
-      }
-    }
-    if(j == needle_size) {
-      return (int) i;
-    }
-  }
-  return -1;
-
-}
-
-STRING_DEF s32 string_index_of_off(string s, u64 off, const char *needle) {
-
-  if(off > s.len) {
-    return -1;
-  }
-  
-  s32 pos = string_index_of_impl(s.data + off, s.len - off, needle, strlen(needle));
-  if(pos < 0) {
-    return -1;
-  }
-
-  return pos + (s32) off;
-}
-
-STRING_DEF s32 string_index_of(string s, const char *needle) {  
-  return string_index_of_impl(s.data, s.len, needle, strlen(needle));
-}
-
-STRING_DEF bool string_chop_by(string *s, const char *delim, string *d) {
-  if(!s->len) return false;
-  
-  s32 pos = string_index_of(*s, delim);
-  if(pos < 0) pos = (int) s->len;
-    
-  if(d && !string_substring(*s, 0, pos, d))
-    return false;
-
-  if(pos == (int) s->len) {
-    *d = *s;
-    s->len = 0;
-    return true;
-  } else {
-    return string_substring(*s, pos + 1, s->len - pos - 1, s);
-  }
-
-}
-
-STRING_DEF bool string_substring(string s, u64 start, u64 len, string *d) {
-
-  if(start > s.len) {
-    return false;
-  }
-
-  if(start + len > s.len) {
-    return false;
-  }
-
-  *d = string_substring_impl(s, start, len);
-  
-  return true;
-}
-
-STRING_DEF bool string_builder_append(string_builder *sb, const char *data, size_t data_len) {
-  u64 cap = sb->cap;
-  if(cap == 0) cap = STRING_BUILDER_DEFAULT_CAP;
-  while(sb->len + data_len > cap) {
-    cap *= 2;
-  }
-  if(cap != sb->cap) {
-    sb->cap = cap;
-    sb->data = realloc(sb->data, sb->cap);
-    if(!sb->data) return false;
-  }
-  memcpy(sb->data + sb->len, data, data_len);
-  sb->len += data_len;
-  return true;
-}
-
-STRING_DEF bool string_builder_to_string(string_builder *sb, string *d) {
-  return string_copy_cstr2(sb->data, sb->len, d);
-}
-
-#endif // STRING_IMPLEMENTATION
-
-#endif // STRING_H
-#ifndef THREAD_H_H
-#define THREAD_H_H
-
-#ifdef _WIN32 ////////////////////////////////////////////
-#include <windows.h>
-#include <process.h>
-
-//#include <process.h>
-typedef HANDLE Thread;
-typedef HANDLE Mutex;
-//TODO implement for gcc
-#elif __GNUC__ ////////////////////////////////////////////
-#include <pthread.h>
-typedef pthread_t Thread;
-typedef pthread_mutex_t Mutex;
-#endif
-
-#include <stdint.h> // for uintptr_t
-
-int thread_create(Thread *id, void* (*function)(void *), void *arg);
-void thread_join(Thread id);
-void thread_sleep(int ms);
-
-int mutex_create(Mutex* mutex);
-void mutex_lock(Mutex mutex);
-void mutex_release(Mutex mutex);
-
-#ifdef THREAD_IMPLEMENTATION
-
-#ifdef _WIN32 ////////////////////////////////////////////
-
-int thread_create(Thread *id, void* (*function)(void *), void *arg) {
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpedantic"
-#endif //__GNUC__
-    uintptr_t ret = _beginthread((_beginthread_proc_type) (void *) function, 0, arg);
-
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif //__GNUC__
-
-    if((long int) ret == -1L) {
-	return 0;
-    }
-
-    *id = (HANDLE) (uintptr_t) ret;
-
-    return 1;
-}
-
-void thread_join(Thread id) {
-    WaitForSingleObject(id, INFINITE);
-    CloseHandle(id);
-}
-
-void thread_sleep(int ms) {
-    Sleep(ms);
-}
-
-int mutex_create(Mutex* mutex) {
-    *mutex = CreateMutexW(NULL, FALSE, NULL);
-    return *mutex != NULL;
-}
-
-void mutex_lock(Mutex mutex) {
-    WaitForSingleObject(mutex, INFINITE);
-}
-
-void mutex_release(Mutex mutex) {
-    ReleaseMutex(mutex);
-}
-
-//TODO implement for gcc
-#elif __GNUC__ ////////////////////////////////////////////
-
-int thread_create(Thread *id, void* (*function)(void *), void *arg) {
-    return pthread_create(id, NULL, function, arg) == 0;
-}
-
-void thread_join(Thread id) {
-    pthread_join(id, NULL);
-}
-
-void thread_sleep(int ms) {
-    //TOOD: proper sleep_time if ms is longer than a second
-    struct timespec sleep_time;
-    if(ms < 1000) {
-	sleep_time.tv_sec = 0;
-	sleep_time.tv_nsec = ms * 1000000;    
-    } else {
-	sleep_time.tv_sec = ms / 1000;
-	sleep_time.tv_nsec = 0;
-    }
-    if(nanosleep(&sleep_time, NULL) == -1) {
-	return;
-    }
-}
-
-int mutex_create(Mutex *mutex) {
-  if(pthread_mutex_init(mutex, NULL) != 0) {
-    return 0;
-  }
-
-  return 1;
-}
-
-void mutex_lock(Mutex mutex) {
-  pthread_mutex_lock(&mutex);
-}
-
-void mutex_release(Mutex mutex) {
-  pthread_mutex_unlock(&mutex);
-}
-
-
-#endif //__GNUC__
-
-#endif //THREAD_IMPLEMENTATION
-
-
-#endif //THREAD_H_H
-#ifndef TYPES_H
-#define TYPES_H
-
-#include <stdio.h>
-#include <stdint.h>
-
-typedef uint8_t u8;
-typedef char s8; // because of mingw warning not 'int8_t'
-typedef uint16_t u16;
-typedef int16_t s16;
-typedef uint32_t u32;
-typedef int32_t s32;
-typedef uint64_t u64;
-typedef int64_t s64;
-
-typedef float f32;
-typedef double f64;
-
-#define return_defer(n) do{			\
-    result = (n);				\
-    goto defer;					\
-  }while(0)
-
-#define errorf(...) do{						\
-    fflush(stdout);						\
-    fprintf(stderr, "%s:%d:ERROR: ", __FILE__, __LINE__);	\
-    fprintf(stderr,  __VA_ARGS__ );				\
-    fprintf(stderr, "\n");					\
-    fflush(stderr);						\
-  }while(0)
-
-#define panicf(...) do{						\
-    errorf(__VA_ARGS__);					\
-    exit(1);							\
-  }while(0)
-
-#endif // TYPES_H
-#ifndef WAV_H
-#define WAV_H
-
-//https://de.wikipedia.org/wiki/RIFF_WAVE
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <stdbool.h>
-
-#ifndef WAV_DEF
-#  define WAV_DEF static inline
-#endif //WAV_DEF
-
-typedef struct {
-  int8_t chunkID[4];  // 'RIFF'
-  uint32_t chunkSize;
-  int8_t riffType[4]; // 'WAVE'
-  int8_t fmtID[4];    // 'fmt '
-  uint32_t fmtChunkSize;
-  uint16_t wFormatTag;
-  uint16_t channels; // wChannels
-  uint32_t sample_rate; // dwSamplesPerSec
-  uint32_t dwAvgBytesPerSec;
-  uint16_t wBlockAlign;
-  uint16_t wBitsPerSample;
-  uint8_t data[4];  // 'data'
-  uint32_t dataSize;
-} Wav_Header;
-
-typedef Wav_Header Wav;
-
-// Public:
-WAV_DEF bool wav_slurp(Wav *wav_header, const char *filepath, unsigned char **data, uint32_t *size);
-WAV_DEF bool wav_read(Wav *wav_header, unsigned char *memory, size_t memory_len, unsigned char **data, uint32_t *size);
-
-#ifdef WAV_IMPLEMENTATION
-
-WAV_DEF bool wav_slurp(Wav *wav_header, const char *filepath, unsigned char **data, uint32_t *size) {
-  FILE* f = fopen(filepath, "rb");
-  if(!f) {
-    return false;
-  }
-
-  size_t n = fread(wav_header, sizeof(*wav_header), 1, f);
-  if(n != 1) {
-    fclose(f);
-    return false;
-  }
-
-  *size = (uint32_t) wav_header->chunkSize - sizeof(*wav_header);
-  *data = (unsigned char *) malloc(*size);
-  if(!(*data)) {
-    fclose(f);
-    return false;
-  }
-  size_t m = fread(*data, 1, *size, f);
-  if(m != *size) {
-    fclose(f);
-    return false;
-  }
-
-  fclose(f);
-  return true;
-}
-
-WAV_DEF bool wav_read(Wav *wav_header, unsigned char *memory, size_t memory_len, unsigned char **data, uint32_t *size) {
-
-  size_t header_size = sizeof(*wav_header);
-
-  if(memory_len < header_size) {
-    return false;
-  }
-  
-  memcpy(wav_header, memory, header_size);
-  
-  memory += header_size;
-  memory_len -= header_size;
-
-  *size = (uint32_t) wav_header->chunkSize - header_size;
-  *data = memory;  
-
-  return true;
-}
-
-#endif //WAV_IMPLEMENTATION
-
-#endif //WAV_H
-#ifndef WINDOW_H
-#define WINDOW_H
-
-// win32
-//   msvc : user32.lib gdi32.lib opengl32.lib (shell32.lib)
-//   mingw:
-
-#ifndef WINDOW_LOG
-#  ifndef WINDOW_QUIET
-#    include <stdio.h>
-#    define WINDOW_LOG(...) fprintf(stderr, "WINDOW: "__VA_ARGS__);
-#  else
-#    define WINDOW_LOG(...)
-#  endif // WINDOW QUIET
-#endif // WINDOW_LOG
-
-#include <stdbool.h>
-#include <math.h>
-
-#include <windows.h>
-#include <GL/GL.h>
-
-#ifndef WINDOW_DEF
-#  define WINDOW_DEF static inline
-#endif //WINDOW_DEF
-
-#ifndef PI
-#  define PI 3.141592653589793f
-#endif //PI
-
-#define WINDOW_DOUBLE_CLICK_TIME_MS 500
-
-#define WINDOW_BACKSPACE 8
-#define WINDOW_ESCAPE 27
-#define WINDOW_SPACE 32
-
-typedef enum{
-  WINDOW_EVENT_NONE = 0,
-  WINDOW_EVENT_KEYPRESS,
-  WINDOW_EVENT_KEYRELEASE,
-  WINDOW_EVENT_MOUSEPRESS,
-  WINDOW_EVENT_MOUSERELEASE,
-  WINDOW_EVENT_MOUSEWHEEL,
-  WINDOW_EVENT_FILEDROP,
-}Window_Event_Type;
-
-typedef struct{
-  MSG msg;
-  Window_Event_Type type;
-  union{
-    char key;
-    long long value;
-    int amount;
-  }as;
-}Window_Event;
-
-typedef struct{
-  HDROP h_drop;
-  char path[MAX_PATH];
-
-  int count;
-  int index;
-}Window_Dragged_Files;
-
-typedef struct{
-  HWND hwnd;
-  HDC dc;
-  RECT rect;
-  POINT point;
-  LARGE_INTEGER performance_frequency;
-  LARGE_INTEGER time;
-  bool is_shift_down;
-  
-  double dt;
-  int running;
-  int width, height;
-}Window;
-
-typedef struct{
-  HANDLE handle;
-}Window_Clipboard;
-
-#define WINDOW_RUNNING       0x1
-#define WINDOW_NOT_RESIZABLE 0x2
-#define WINDOW_DRAG_N_DROP   0x4
-#define WINDOW_FULLSCREEN    0x8
-
-WINDOW_DEF bool window_init(Window *w, int width, int height, const char *title, int flags);
-WINDOW_DEF bool window_set_vsync(Window *w, bool use_vsync);
-WINDOW_DEF bool window_peek(Window *w, Window_Event *event);
-WINDOW_DEF bool window_get_mouse_position(Window *w, int *width, int *height);
-WINDOW_DEF void window_swap_buffers(Window *w);
-WINDOW_DEF bool window_toggle_fullscreen(Window *w);
-WINDOW_DEF void window_free(Window *w);
-WINDOW_DEF bool window_show_cursor(Window *w, bool show);
-
-WINDOW_DEF bool window_dragged_files_init(Window_Dragged_Files *files, Window_Event *event);
-WINDOW_DEF bool window_dragged_files_next(Window_Dragged_Files *files, char **path);
-WINDOW_DEF void window_dragged_files_free(Window_Dragged_Files *files);
-
-WINDOW_DEF bool window_clipboard_init(Window_Clipboard *clipboard, Window *w, char **text);
-WINDOW_DEF bool window_clipboard_set(Window *w, const char *text, size_t text_len);
-WINDOW_DEF void window_clipboard_free(Window_Clipboard *clipboard);
-
-WINDOW_DEF bool window_compile_shader(GLuint *shader, GLenum shader_type, const char *shader_source);
-WINDOW_DEF bool window_link_program(GLuint *program, GLuint vertex_shader, GLuint fragment_shader);
-
-#ifndef WINDOW_NO_RENDERER
-
-typedef struct{
-  float x, y;
-}Window_Renderer_Vec2f;
-
-WINDOW_DEF Window_Renderer_Vec2f window_renderer_vec2f(float x, float y);
-
-typedef struct{
-  float x, y, z, w;
-}Window_Renderer_Vec4f;
-
-WINDOW_DEF Window_Renderer_Vec4f window_renderer_vec4f(float x, float y, float z, float w);
-
-typedef struct{
-  Window_Renderer_Vec2f position;
-  Window_Renderer_Vec4f color;
-  Window_Renderer_Vec2f uv;
-}Window_Renderer_Vertex;
-
-#define WINDOW_RENDERER_VERTEX_ATTR_POSITION 0
-#define WINDOW_RENDERER_VERTEX_ATTR_COLOR 1
-#define WINDOW_RENDERER_VERTEX_ATTR_UV 2
-
-#define WINDOW_RENDERER_CAP 1024
-
-typedef struct{
-  GLuint vao, vbo;
-  GLuint vertex_shader, fragment_shader;
-  GLuint program;
-  
-  GLuint textures;
-  unsigned int images_count;
-
-#ifdef WINDOW_STB_TRUETYPE
-  float font_height;
-  stbtt_bakedchar font_cdata[96]; // ASCII 32..126 is 95 glyphs
-#endif //WINDOW_STB_TRUETYPE
-    
-  int font_index;
-  int tex_index;
-
-  float width, height;
-  Window_Renderer_Vec4f background;
-
-  Window_Renderer_Vertex verticies[WINDOW_RENDERER_CAP];
-  int verticies_count;
-
-  //Imgui things
-  Window_Renderer_Vec2f input;
-  Window_Renderer_Vec2f pos;
-  bool clicked;
-  bool released;
-}Window_Renderer;
-
-static Window_Renderer_Vec4f WHITE = {1, 1, 1, 1};
-static Window_Renderer_Vec4f RED   = {1, 0, 0, 1};
-static Window_Renderer_Vec4f BLUE  = {0, 0, 1, 1};
-static Window_Renderer_Vec4f GREEN = {0, 1, 0, 1};
-static Window_Renderer_Vec4f BLACK = {0, 0, 0, 1};
-
-#define vec2f(x, y) window_renderer_vec2f((x), (y))
-#define vec4f(x, y, z, w) window_renderer_vec4f((x), (y), (z), (w))
-#define Vec4f Window_Renderer_Vec4f
-#define Vec2f Window_Renderer_Vec2f
-
-#define draw_triangle window_renderer_triangle
-#define draw_solid_triangle window_renderer_solid_triangle
-#define draw_solid_rect window_renderer_solid_rect
-#define draw_solid_rounded_rect window_renderer_solid_rounded_rect
-#define draw_solid_rounded_shaded_rect window_renderer_solid_rounded_shaded_rect
-#define draw_solid_rect_angle window_renderer_solid_rect_angle
-#define push_texture window_renderer_push_texture
-#define draw_texture window_renderer_texture
-#define draw_texture_colored window_renderer_texture_colored
-#define draw_solid_circle window_renderer_solid_circle
-
-#define button window_renderer_button
-#define texture_button window_renderer_texture_button
-#define texture_button_ex window_renderer_texture_button_ex
-
-#ifdef WINDOW_STB_TRUETYPE
-#  define push_font window_renderer_push_font
-#  define draw_text(cstr, pos, factor) window_renderer_text((cstr), strlen((cstr)), (pos), (factor), (WHITE))
-#  define draw_text_colored(cstr, pos, factor, color) window_renderer_text((cstr), strlen((cstr)), (pos), (factor), (color))
-#  define draw_text_len(cstr, cstr_len, pos, factor) window_renderer_text((cstr), (cstr_len), (pos), (factor), (WHITE))
-#  define draw_text_len_colored(cstr, cstr_len, pos, factor, color) window_renderer_text((cstr), (cstr_len), (pos), (factor), (color))
-
-#  define measure_text(cstr, factor, size) window_renderer_measure_text((cstr), strlen((cstr)), (factor), (size));
-#  define measure_text_len(cstr, cstr_len, factor, size) window_renderer_measure_text((cstr), (cstr_len), (factor), (size));
-
-#  define draw_text_wrapped window_renderer_text_wrapped
-#endif //WINDOW_STB_TRUETYPE
-
-#ifdef WINDOW_STB_IMAGE
-#  define push_image window_renderer_push_image
-#endif //WINDOW_STB_IMAGE
-
-WINDOW_DEF bool window_renderer_init(Window_Renderer *r);
-WINDOW_DEF void window_renderer_free();
-
-WINDOW_DEF void window_renderer_begin(int width, int height);
-WINDOW_DEF void window_renderer_set_color(Window_Renderer_Vec4f color);
-WINDOW_DEF void window_renderer_end();
-
-WINDOW_DEF void window_renderer_imgui_begin(Window *w, Window_Event *e);
-WINDOW_DEF void window_renderer_imgui_update(Window *w, Window_Event *e);
-WINDOW_DEF void window_renderer_imgui_end();
-
-// Primitives
-
-WINDOW_DEF void window_renderer_vertex(Window_Renderer_Vec2f p, Window_Renderer_Vec4f c, Window_Renderer_Vec2f uv);
-WINDOW_DEF void window_renderer_triangle(Window_Renderer_Vec2f p1, Window_Renderer_Vec2f p2, Window_Renderer_Vec2f p3, Window_Renderer_Vec4f c1, Window_Renderer_Vec4f c2, Window_Renderer_Vec4f c3, Window_Renderer_Vec2f uv1, Window_Renderer_Vec2f uv2, Window_Renderer_Vec2f uv3);
-WINDOW_DEF void window_renderer_solid_triangle(Window_Renderer_Vec2f p1, Window_Renderer_Vec2f p2, Window_Renderer_Vec2f p3, Window_Renderer_Vec4f c);
-WINDOW_DEF void window_renderer_quad(Window_Renderer_Vec2f p1, Window_Renderer_Vec2f p2, Window_Renderer_Vec2f p3, Window_Renderer_Vec2f p4,Window_Renderer_Vec4f c1,Window_Renderer_Vec4f c2,Window_Renderer_Vec4f c3,Window_Renderer_Vec4f c4, Window_Renderer_Vec2f uv1, Window_Renderer_Vec2f uv2, Window_Renderer_Vec2f uv3, Window_Renderer_Vec2f uv4);
-WINDOW_DEF void window_renderer_solid_rect(Window_Renderer_Vec2f pos, Window_Renderer_Vec2f size,Window_Renderer_Vec4f color);
-WINDOW_DEF void window_renderer_solid_rounded_rect(Vec2f pos, Vec2f size, float radius, int parts, Vec4f color);
-WINDOW_DEF void window_renderer_solid_rounded_shaded_rect(Window_Renderer_Vec2f pos, Window_Renderer_Vec2f size, float radius, int parts, float shade_px, Window_Renderer_Vec4f color);
-WINDOW_DEF void window_renderer_solid_rect_angle(Window_Renderer_Vec2f pos, Window_Renderer_Vec2f size, float angle, Window_Renderer_Vec4f color);
-WINDOW_DEF bool window_renderer_push_texture(int width, int height, const void *data, bool grey, unsigned int *index);
-WINDOW_DEF void window_renderer_texture(unsigned int texture, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec2f uvp, Window_Renderer_Vec2f uvs);
-WINDOW_DEF void window_renderer_texture_colored(unsigned int texture, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec2f uvp, Window_Renderer_Vec2f uvs, Window_Renderer_Vec4f c);
-WINDOW_DEF void window_renderer_solid_circle(Window_Renderer_Vec2f pos, float start_angle, float end_angle, float radius, int parts, Window_Renderer_Vec4f color);
-
-//Imgui-things
-WINDOW_DEF bool window_renderer_button(Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f c);
-WINDOW_DEF bool window_renderer_texture_button(unsigned int texture, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s);
-WINDOW_DEF bool window_renderer_texture_button_ex(unsigned int texture, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f c, Window_Renderer_Vec2f uvp, Window_Renderer_Vec2f uvs);
-
-WINDOW_DEF bool window_renderer_slider(Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f knot_color, Window_Renderer_Vec4f color, float value, float *cursor);
-
-#ifdef WINDOW_STB_TRUETYPE
-WINDOW_DEF bool window_renderer_push_font(const char *filepath, float pixel_height);
-WINDOW_DEF void window_renderer_measure_text(const char *cstr, size_t cstr_len, float scale, Vec2f *size);
-WINDOW_DEF void window_renderer_text(const char *cstr, size_t cstr_len, Window_Renderer_Vec2f pos, float scale, Window_Renderer_Vec4f color);
-WINDOW_DEF void window_renderer_text_wrapped(const char *cstr, size_t cstr_len, Window_Renderer_Vec2f *pos, Window_Renderer_Vec2f size, float scale, Window_Renderer_Vec4f color);
-
-WINDOW_DEF bool window_renderer_text_button(const char *cstr, size_t cstr_len, float scale, Window_Renderer_Vec4f text_color, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f c);
-#endif //WINDOW_STB_TRUETYPE
-
-#ifdef WINDOW_STB_IMAGE
-WINDOW_DEF bool window_renderer_push_image(const char *filepath, int *width, int *height, unsigned int *index);
-#endif //WINDOW_STB_IMAGE
-
-#endif //WINDOW_NO_RENDERER
-
-
-// opengl - functions / types / definitions
-#define GL_TEXTURE0 0x84C0
-#define GL_TEXTURE1 0x84C1
-#define GL_TEXTURE2 0x84C2
-#define GL_TEXTURE3 0x84C3
-#define GL_TEXTURE4 0x84C4
-#define GL_TEXTURE5 0x84C5
-
-#define GL_ARRAY_BUFFER 0x8892
-#define GL_DYNAMIC_DRAW 0x88E8
-#define GL_ACTIVE_UNIFORMS 0x8B86
-
-#define GL_FRAGMENT_SHADER 0x8B30
-#define GL_VERTEX_SHADER 0x8B31
-#define GL_COMPILE_STATUS 0x8B81
-#define GL_LINK_STATUS 0x8B82
-#define GL_CLAMP_TO_EDGE 0x812F
-#define GL_RGB_INTEGER 0x8D98
-#define GL_UNSIGNED_INT_8_8_8_8_REV 0x8367
-#define GL_MULTISAMPLE  0x809D
-#define GL_SAMPLES 0x80A9
-
-#define GL_BGRA 0x80E1
-#define GL_RGB 0x1907
-#define GL_BGR 0x80E0
-
-#define GL_MULTISAMPLE 0x809D
-#define GL_MULTISAMPLE_ARB 0x809D
-#define GL_MULTISAMPLE_BIT 0x20000000
-#define GL_MULTISAMPLE_BIT_ARB 0x20000000
-#define GL_MULTISAMPLE_FILTER_HINT_NV 0x8534
-#define GL_SAMPLE_ALPHA_TO_COVERAGE 0x809E
-#define GL_SAMPLE_BUFFERS 0x80A8
-#define GL_SAMPLES 0x80A9
-
-typedef ptrdiff_t GLsizeiptr;
-typedef ptrdiff_t GLintptr;
-typedef char GLchar;
-
-void glActiveTexture(GLenum texture);
-void glGenVertexArrays(GLsizei n, GLuint *arrays);
-void glBindVertexArray(GLuint array);
-void glGenBuffers(GLsizei n, GLuint *buffers);
-void glBindBuffer(GLenum target, GLuint buffer);
-void glBufferData(GLenum target, GLsizeiptr size, const void * data, GLenum usage);
-void glEnableVertexAttribArray(GLuint index);
-void glVertexAttribPointer(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void * pointer);
-GLuint glCreateShader(GLenum shaderType);
-void glShaderSource(GLuint shader, GLsizei count, const GLchar **_string, const GLint *length);
-void glCompileShader(GLuint shader);
-void glGetShaderiv(GLuint shader, GLenum pname, GLint *params);
-void glGetShaderInfoLog(GLuint shader, GLsizei maxLength, GLsizei *length, GLchar *infoLog);
-GLuint glCreateProgram(void);
-void glAttachShader(GLuint program, GLuint shader);
-void glLinkProgram(GLuint program);
-void glGetProgramInfoLog(GLuint program, GLsizei maxLength, GLsizei *length, GLchar *infoLog);
-void glGetProgramiv(GLuint program, GLenum pname, GLint *params);
-void glUseProgram(GLuint program);
-void glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void * data);
-void glUniform2f(GLint location, GLfloat v0, GLfloat v1);
-void glUniform1f(GLint location, GLfloat v0);
-void glUniform1fv(GLint location, GLsizei count, const GLfloat *value);
-void glUniform2fv(GLint location, GLsizei count, const GLfloat *value);
-void glUniform1i(GLint location, GLint v0);
-GLint glGetUniformLocation(GLuint program, const GLchar *name);
-void glGetActiveUniform(GLuint program, GLuint index, GLsizei bufSize, GLsizei *length, GLint *size, GLenum *type, GLchar *name);
-void glGetUniformfv(GLuint program, GLint location, GLfloat *params);
-void glGetUniformiv(GLuint program, GLint location, GLsizei bufSize, GLint *params);
-void glSampleCoverage(GLfloat value, GLboolean invert);
-int wglSwapIntervalEXT(GLint interval);
-
-#ifdef WINDOW_IMPLEMENTATION
-
-#ifndef WINDOW_NO_RENDERER
-static Window_Renderer window_renderer;
-static bool window_renderer_inited = false;
-#endif //WINDOW_NO_RENDERER
-
-LRESULT CALLBACK Window_Implementation_WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
-
-  if(message == WM_CLOSE ||
-     message == WM_DESTROY) {
-    Window *w = (Window *) GetWindowLongPtr(hWnd, 0);
-    if(w != NULL) {
-      w->running = 0;
-    }
-    PostQuitMessage(0);
-    return 0;
-  } else {
-    return DefWindowProc(hWnd, message, wParam, lParam);
-  }
-  
-}
-
-WINDOW_DEF void window_win32_opengl_init();
-
-WINDOW_DEF bool window_init(Window *w, int width, int height, const char *title, int flags) {
-
-  STARTUPINFO startupInfo;
-  GetStartupInfo(&startupInfo);
-  HMODULE hInstance = GetModuleHandle(NULL);
-  DWORD nCmdShow = startupInfo.wShowWindow;
-
-#if 1
-  HINSTANCE user32Lib = LoadLibrary("user32.dll");
-  if(!user32Lib) {
-    return false;
-  }
-
-  PROC setProcessDPIAware = GetProcAddress(user32Lib, "SetProcessDPIAware");
-  if(!setProcessDPIAware) {
-    return false;
-  }
-  setProcessDPIAware();
-
-  FreeLibrary(user32Lib);
-#else
-  SetProcessDPIAware();
-#endif
-
-  WNDCLASSEX wc = {0};
-  wc.cbSize = sizeof(WNDCLASSEX);
-  wc.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
-  wc.lpfnWndProc = Window_Implementation_WndProc;
-  wc.hInstance = hInstance;
-  wc.lpszClassName = title;
-  wc.cbWndExtra = sizeof(LONG_PTR);
-  wc.cbClsExtra = 0;
-  wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-  
-  HICON icon = LoadIcon(hInstance, MAKEINTRESOURCE(1));
-  wc.hIcon = icon; // ICON when tabbing
-  wc.hIconSm = icon; //ICON default
-  
-  if(!RegisterClassEx(&wc)) {
-    return false;
-  }
-
-  int screen_width = GetSystemMetrics(SM_CXSCREEN);
-  int screen_height = GetSystemMetrics(SM_CYSCREEN);
-
-  // WS_THICKFRAME :: resizable
-  // WS_MAXIMIZEBOX :: maximizable
-
-#define WINDOW_STYLE (WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX)
-#define WINDOW_RESIZABLE_STYLE (WS_THICKFRAME | WS_MAXIMIZEBOX)
-
-  DWORD style = WINDOW_STYLE;
-  if(!(flags & WINDOW_NOT_RESIZABLE)) {
-    style |= WINDOW_RESIZABLE_STYLE;
-  } else {
-    width -= 10;
-    height -= 10;
-  }
-
-  //add space  
-  width += 16;
-  height += 39;
-
-  DWORD window_flags = 0;
-  if((flags & WINDOW_DRAG_N_DROP)) {
-    window_flags |= WS_EX_ACCEPTFILES;
-  }
-
-  w->hwnd = CreateWindowEx(window_flags,
-			   wc.lpszClassName,
-			   wc.lpszClassName,
-			   style,
-			   screen_width / 2 - width/2,
-			   screen_height / 2 - height/2,
-			   width,
-			   height,
-			   NULL,
-			   NULL,
-			   hInstance,
-			   NULL);
-  if(!w->hwnd) {
-    return false;
-  }
-  w->dc = GetDC(w->hwnd);
-
-  //BEGIN opengl
-  HDC w_dc = GetDC(w->hwnd);
-
-  PIXELFORMATDESCRIPTOR desired_format = {0};
-  desired_format.nSize = sizeof(desired_format);
-  desired_format.nVersion = 1;
-  desired_format.dwFlags = PFD_SUPPORT_OPENGL|PFD_DRAW_TO_WINDOW|PFD_DOUBLEBUFFER;
-  desired_format.cColorBits = 32;
-  desired_format.cAlphaBits = 8;
-
-  int suggested_format_index = ChoosePixelFormat(w_dc, &desired_format);
-  PIXELFORMATDESCRIPTOR suggested_format;
-  DescribePixelFormat(w_dc, suggested_format_index, sizeof(suggested_format), &suggested_format);
-  SetPixelFormat(w_dc, suggested_format_index, &suggested_format);
-  
-  HGLRC opengl_rc = wglCreateContext(w_dc);
-  if(!wglMakeCurrent(w_dc, opengl_rc)) {
-    return false;
-  }
-  ReleaseDC(w->hwnd, w_dc);
-  //END opengl
-
-  LONG_PTR lptr = {0};
-  memcpy(&lptr, &w, sizeof(w));  
-  SetWindowLongPtr(w->hwnd, 0, lptr);  
-
-  ShowWindow(w->hwnd, nCmdShow);
-  UpdateWindow(w->hwnd);
-
-  w->running = WINDOW_RUNNING;
-  w->width = width;
-  w->height = height;
-  w->is_shift_down = false;
-
-  // load non-default-opengl-functions
-  window_win32_opengl_init();
-
-#ifndef WINDOW_NO_RENDERER
-  if(!window_renderer_inited) {
-    if(!window_renderer_init(&window_renderer)) {
-      return false;	    
-    }
-	
-    window_renderer_inited = true;
-  }
-#endif //WINDOW_NO_RENDERER
-
-  // use vsync as default
-  if(!window_set_vsync(w, true)) {
-    return false;
-  }
-
-  if((flags & WINDOW_FULLSCREEN) && !window_toggle_fullscreen(w)) {
-    return false;
-  }
-
-  QueryPerformanceFrequency(&w->performance_frequency);
-  QueryPerformanceCounter(&w->time);
-  w->dt = 0;
-    
-  return true;
-}
-
-WINDOW_DEF bool window_set_vsync(Window *w, bool use_vsync) {
-  (void) w;
-  return wglSwapIntervalEXT(use_vsync ? 1 : 0);
-}
-
-static char window_german_keyboard[10] = {
-  [1] ='!',
-  [2] = '\"',
-  [3] = '§',
-  [4] = '$',
-  [5] = '%',
-  [6] = '&',
-  [7] = '/',
-  [8] = '(',
-  [9] = ')', 
-  [0] = '=',
-};
-
-WINDOW_DEF bool window_peek(Window *w, Window_Event *e) {
-    
-  MSG *msg = &e->msg;
-
-  while(true) {
-    if(!PeekMessage(msg, w->hwnd, 0, 0, PM_REMOVE)) {
-      break;
-    }
-
-    TranslateMessage(msg);
-    DispatchMessage(msg);
-
-    e->type = WINDOW_EVENT_NONE;
-
-    switch(msg->message) {
-    case WM_DROPFILES: {
-      e->type = WINDOW_EVENT_FILEDROP;
-      e->as.value = msg->wParam;
-    } break;
-    case WM_RBUTTONUP:  {
-      e->type = WINDOW_EVENT_MOUSERELEASE;
-      e->as.key = 'R';
-      ReleaseCapture();
-    } break;
-    case WM_RBUTTONDOWN: {
-      e->type = WINDOW_EVENT_MOUSEPRESS;
-      e->as.key = 'R';
-      SetCapture(w->hwnd);
-    } break;
-    case WM_LBUTTONUP: {
-      e->type = WINDOW_EVENT_MOUSERELEASE;
-      e->as.key = 'L';
-      ReleaseCapture();
-    } break;
-    case WM_LBUTTONDOWN: {
-      e->type = WINDOW_EVENT_MOUSEPRESS;
-      e->as.key = 'L';
-      SetCapture(w->hwnd);
-    } break;
-    case WM_SYSKEYDOWN:
-    case WM_SYSKEYUP:
-    case WM_KEYDOWN:
-    case WM_KEYUP: {
-      bool was_down = ((msg->lParam & (1 << 30)) != 0);
-      bool is_down = ((msg->lParam & (1 << 31)) == 0);
-
-      if(was_down != is_down) {
-
-	if(msg->wParam == VK_SHIFT) {
-	  if(was_down) {
-	    w->is_shift_down = false;
-	  } else {
-	    w->is_shift_down = true;
-	  }
-	  continue;
-	}
-	
-	char c = (char) msg->wParam;
-	if(w->is_shift_down) {
-	  if('0' <= c && c <= '9') {
-	    c = window_german_keyboard[c - '0'];
-	  }
-	} else {
-	  if('A' <= c && c <= 'Z') {
-	    c += 32;
-	  }
-	}
-	
-	e->as.key = c;
-	if(was_down) {
-	  e->type = WINDOW_EVENT_KEYRELEASE;
-	} else {
-	  e->type = WINDOW_EVENT_KEYPRESS;
-	}
-	
-      }
-      
-    } break;
-    case WM_MOUSEWHEEL:
-    case WM_MOUSEHWHEEL: {
-      e->type = WINDOW_EVENT_MOUSEWHEEL; 
-      e->as.amount = GET_WHEEL_DELTA_WPARAM(msg->wParam) / 120;//apperantly this is 120`s steps
-    } break;
-    default: {
-    } break;
-    }
-
-    
-#ifndef WINDOW_NO_RENDERER
-    window_renderer_imgui_update(w, e);
-#endif //WINDOW_NO_RENDERER
-
-    if(e->type != WINDOW_EVENT_NONE) {
-      return true;
-    }
-  }
-
-  // width, height
-  if(!(w->running & WINDOW_FULLSCREEN)) {
-    if(GetClientRect(w->hwnd, &w->rect)) {
-      w->width = (w->rect.right - w->rect.left);
-      w->height = (w->rect.bottom - w->rect.top);
-    }
-  }
-
-  //dt
-  LARGE_INTEGER time;
-  QueryPerformanceCounter(&time);
-  w->dt = ((double) time.QuadPart - (double) w->time.QuadPart)
-    * 1000
-    / (double) w->performance_frequency.QuadPart;
-  w->time = time;
-
-  //window_renderer
-#ifndef WINDOW_NO_RENDERER
-  window_renderer_imgui_begin(w, e);
-  window_renderer_begin(w->width, w->height);
-#endif // WINDOW_NO_RENDERER
-
-  return false;
-}
-
-WINDOW_DEF bool window_get_mouse_position(Window *w, int *width, int *height) {
-  if(GetCursorPos(&w->point) && ScreenToClient(w->hwnd, &w->point)) {
-    *width = w->point.x;
-    *height = w->point.y;
-    return true;
-  }
-
-  return false;
-}
-  
-WINDOW_DEF void window_swap_buffers(Window *w) {
-#ifndef WINDOW_NO_RENDERER
-  window_renderer_end();
-  window_renderer_imgui_end();
-#endif // WINDOW_NO_RENDERER
-  
-  SwapBuffers(w->dc);
-}
-
-WINDOW_DEF bool window_toggle_fullscreen(Window *w) {
-
-  DWORD style = (DWORD) GetWindowLongPtr(w->hwnd, GWL_STYLE);
-
-  if(w->running & WINDOW_FULLSCREEN) {
-
-    style &= ~WS_POPUP;
-    style |= WINDOW_STYLE; // fix this
-    if(!(w->running & WINDOW_NOT_RESIZABLE)) {
-      style |= WINDOW_RESIZABLE_STYLE;
-    }
-    w->running &= ~WINDOW_FULLSCREEN;
-    
-    SetWindowPos(w->hwnd, NULL,
-		 w->rect.left,
-		 w->rect.top,
-		 w->rect.right - w->rect.left,
-		 w->rect.bottom - w->rect.top,
-		 SWP_FRAMECHANGED);    
-  } else {    
-    if(!GetWindowRect(w->hwnd, &w->rect)) {
-      return false;
-    }
-
-    int width = GetSystemMetrics(SM_CXSCREEN);
-    int height = GetSystemMetrics(SM_CYSCREEN);
-
-    style &= ~WINDOW_STYLE;
-    if(!(w->running & WINDOW_NOT_RESIZABLE)) {
-      style &= ~WINDOW_RESIZABLE_STYLE;
-    }
-    style |= WS_POPUP;
-    w->running |= WINDOW_FULLSCREEN;
-    w->width = width;
-    w->height = height;
-
-    SetWindowPos(w->hwnd, HWND_TOP, 0, 0, width, height, SWP_FRAMECHANGED);
-  }
-
-  SetWindowLongPtr(w->hwnd, GWL_STYLE, style);
-
-  return true;
-}
-
-WINDOW_DEF void window_free(Window *w) {	
-  ReleaseDC(w->hwnd, w->dc);
-  DestroyWindow(w->hwnd);
-}
-
-WINDOW_DEF bool window_show_cursor(Window *w, bool show) {
-  (void) w;
-
-  CURSORINFO info;
-  info.cbSize = sizeof(CURSORINFO);
-  if(!GetCursorInfo(&info)) {
-    return false;
-  }
-
-  bool visible = info.flags;
-  if(show && !visible) {
-    ShowCursor(true);
-  } else if(!show && visible){
-    ShowCursor(false);
-  }
-
-  return true;
-}
-
-WINDOW_DEF bool window_dragged_files_init(Window_Dragged_Files *files, Window_Event *event) {
-  files->h_drop = (HDROP) event->as.value;
-  files->count = DragQueryFile(files->h_drop, 0xffffffff, files->path, MAX_PATH);
-  if(files->count <= 0) {
-    return false;
-  }
-  files->index = 0;
-
-  return true;
-}
-
-WINDOW_DEF bool window_dragged_files_next(Window_Dragged_Files *files, char **path) {
-  if(files->index >= files->count) {
-    return false;
-  }
-  DragQueryFile(files->h_drop, files->index++, files->path, MAX_PATH);
-  *path = files->path;
-
-  return true;
-}
-
-WINDOW_DEF void window_dragged_files_free(Window_Dragged_Files *files) {
-  DragFinish(files->h_drop);
-}
-
-WINDOW_DEF bool window_clipboard_init(Window_Clipboard *clipboard, Window *w, char **text) {
-
-  (void) w;
-  
-  if(!OpenClipboard(w->hwnd)) {
-    return false;
-  }
-  
-  clipboard->handle = GetClipboardData(CF_TEXT);
-  if(clipboard->handle == NULL) {
-    CloseClipboard();
-    return false;
-  }
-
-  *text = GlobalLock(clipboard->handle);
-  if((*text) == NULL) {
-    CloseClipboard();
-    return false;
-  }  
-  
-  return true;
-}
-
-WINDOW_DEF bool window_clipboard_set(Window *w, const char *text, size_t text_len) {
-
-  HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, text_len + 1);
-  if(!mem) {
-    return false;
-  }
-
-  char *locked_mem = GlobalLock(mem);
-  if(!locked_mem) {
-    GlobalFree(mem);
-    return false;
-  }
-
-  memcpy(locked_mem, text, text_len);
-  locked_mem[text_len] = 0;
-  
-  GlobalUnlock(locked_mem);
-
-  if(!OpenClipboard(w->hwnd)) {
-    GlobalFree(mem);
-    return false;
-  }
-
-  if(!EmptyClipboard()) {
-    GlobalFree(mem);
-    CloseClipboard();
-    return false;
-  }
-
-  if(SetClipboardData(CF_TEXT, mem) == NULL) {
-    GlobalFree(mem);
-    CloseClipboard();
-    return false;
-  }
-
-  CloseClipboard();
-  
-  return true;		
-}
-
-WINDOW_DEF void window_clipboard_free(Window_Clipboard *clipboard) {
-  GlobalUnlock(clipboard->handle);
-  CloseClipboard();  
-}
-
-WINDOW_DEF const char *window_shader_type_name(GLenum shader) {
-  switch (shader) {
-  case GL_VERTEX_SHADER:
-    return "GL_VERTEX_SHADER";
-  case GL_FRAGMENT_SHADER:
-    return "GL_FRAGMENT_SHADER";
-  default:
-    return "(Unknown)";
-  }
-}
-
-WINDOW_DEF bool window_compile_shader(GLuint *shader, GLenum shader_type, const char *shader_source) {
-  *shader = glCreateShader(shader_type);
-  glShaderSource(*shader, 1, &shader_source, NULL);
-  glCompileShader(*shader);
-
-  GLint compiled = 0;
-  glGetShaderiv(*shader, GL_COMPILE_STATUS, &compiled);
-
-  if (!compiled) {
-    GLchar message[1024];
-    GLsizei message_size = 0;
-    glGetShaderInfoLog(*shader, sizeof(message), &message_size, message);
-    WINDOW_LOG("Could not compile shader: %s\n", window_shader_type_name(shader_type));
-    WINDOW_LOG("%.*s\n", message_size, message);
-    return false;
-  }
-
-  return true;
-}
-
-WINDOW_DEF bool window_link_program(GLuint *program, GLuint vertex_shader, GLuint fragment_shader) {
-  *program = glCreateProgram();
-  glAttachShader(*program, vertex_shader);
-  glAttachShader(*program, fragment_shader);
-
-  glLinkProgram(*program);
-  
-  GLint linked = 0;
-  glGetProgramiv(*program, GL_LINK_STATUS, &linked);
-  if(!linked) {
-    GLsizei message_size = 0;
-    GLchar message[1024];
-
-    glGetProgramInfoLog(*program, sizeof(message), &message_size, message);
-    WINDOW_LOG("Could not link program: %.*s\n", message_size, message);
-    return false;
-  }
-  
-  return true;
-    
-}
-
-////////////////////////////////////////////////////////////////////////
-// renderer - definitions
-////////////////////////////////////////////////////////////////////////
-
-#ifndef WINDOW_NO_RENDERER
-
-static const char* window_renderer_vertex_shader_source =
-  "#version 330 core\n"
-  "\n"
-  "layout(location = 0) in vec2 position;\n"
-  "layout(location = 1) in vec4 color;\n"
-  "layout(location = 2) in vec2 uv;\n"
-  "\n"
-  "uniform float resolution_x;\n"
-  "uniform float resolution_y;\n"
-  "\n"
-  "out vec4 out_color;\n"
-  "out vec2 out_uv;\n"
-  "\n"
-  "vec2 resolution_project(vec2 point) {\n"
-  "    return 2 * point / vec2(resolution_x, resolution_y) - 1;\n"
-  "}\n"
-  "\n"
-  "void main() {\n"
-  "  out_color = color;\n"
-  "  out_uv = uv;\n"
-  "  gl_Position = vec4(resolution_project(position), 0, 1);\n"
-  "}";
-
-static const char *window_renderer_fragment_shader_source=
-  "#version 330 core\n"
-  "\n"
-  "uniform sampler2D font_tex;\n"
-  "uniform sampler2D tex;\n"
-  "\n"
-  "in vec4 out_color;\n"
-  "in vec2 out_uv;\n"
-  "\n"
-  "out vec4 fragColor;\n"
-  "\n"
-  "void main() {\n"
-  "    if(out_uv.x < 0 && out_uv.y < 0) {\n"
-  "        fragColor = out_color;\n"
-  "    } else if(out_color.w < 0) {\n"
-  "        vec4 color = texture(font_tex, vec2(out_uv.x, 1-out_uv.y));\n"
-  "        float a = color.w * -out_color.w;\n"
-  "        color = (color + vec4(1, 1, 1, 0)) * out_color;\n"
-  "        color.w = a;\n"
-  "        fragColor = color;\n"
-  "    } else {\n"
-  "        vec4 color = texture(tex, vec2(out_uv.x, 1-out_uv.y));\n"
-  "        color = color * out_color;\n"
-  "        fragColor = color;\n"
-  "    }\n"
-  "}\n";
-
-WINDOW_DEF Window_Renderer_Vec2f window_renderer_vec2f(float x, float y) {
-  return (Window_Renderer_Vec2f) { x, y};
-}
-
-WINDOW_DEF Window_Renderer_Vec4f window_renderer_vec4f(float x, float y, float z, float w) {
-  return (Window_Renderer_Vec4f) { x, y, z, w};
-}
-
-WINDOW_DEF bool window_renderer_init(Window_Renderer *r) {
-  (void) WHITE;
-  (void) RED;
-  (void) BLUE;
-  (void) GREEN;
-  (void) BLACK;
-    
-  // introduce 'verticies' to opengl
-  glGenVertexArrays(1, &r->vao);
-  glBindVertexArray(r->vao);
-
-  glGenBuffers(1, &r->vbo);
-  glBindBuffer(GL_ARRAY_BUFFER, r->vbo);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(r->verticies), r->verticies, GL_DYNAMIC_DRAW);
-
-  // introduce 'Vertex' to opengl
-  glEnableVertexAttribArray(WINDOW_RENDERER_VERTEX_ATTR_POSITION);
-  glVertexAttribPointer(WINDOW_RENDERER_VERTEX_ATTR_POSITION,
-			sizeof(Window_Renderer_Vec2f)/sizeof(float),
-			GL_FLOAT,
-			GL_FALSE,
-			sizeof(Window_Renderer_Vertex),
-			(GLvoid *) offsetof(Window_Renderer_Vertex, position));
-
-  glEnableVertexAttribArray(WINDOW_RENDERER_VERTEX_ATTR_COLOR);
-  glVertexAttribPointer(WINDOW_RENDERER_VERTEX_ATTR_COLOR,
-			sizeof(Window_Renderer_Vec4f)/sizeof(float),
-			GL_FLOAT,
-			GL_FALSE,
-			sizeof(Window_Renderer_Vertex),
-			(GLvoid *) offsetof(Window_Renderer_Vertex, color));
-
-  glEnableVertexAttribArray(WINDOW_RENDERER_VERTEX_ATTR_UV);
-  glVertexAttribPointer(WINDOW_RENDERER_VERTEX_ATTR_UV,
-			sizeof(Window_Renderer_Vec2f)/sizeof(float),
-			GL_FLOAT,
-			GL_FALSE,
-			sizeof(Window_Renderer_Vertex),
-			(GLvoid *) offsetof(Window_Renderer_Vertex, uv));
-  
-  // compile shaders
-  if(!window_compile_shader(&r->vertex_shader, GL_VERTEX_SHADER, window_renderer_vertex_shader_source)) {
-    return false;
-  }
-    
-  if(!window_compile_shader(&r->fragment_shader, GL_FRAGMENT_SHADER, window_renderer_fragment_shader_source)) {
-    return false;
-  }
-
-  // link program
-  if(!window_link_program(&r->program, r->vertex_shader, r->fragment_shader)) {
-    return false;
-  }
-  glUseProgram(r->program);
-
-
-  r->images_count = 0;
-  r->verticies_count = 0;
-  r->font_index = -1;
-
-  window_renderer_imgui_end();
-  window_renderer.input = vec2f(-1.f, -1.f);
-  
-  return true;
-}
-
-WINDOW_DEF void window_renderer_free(Window_Renderer *r) {
-  (void) r;
-}
-
-
-WINDOW_DEF void window_renderer_begin(int width, int height) {
-
-  Window_Renderer *r = &window_renderer;
-
-  if(width > 0 && height > 0) {
-
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glEnable(GL_BLEND);
-    
-    glViewport(0, 0, width, height);
-    glClear(GL_COLOR_BUFFER_BIT);
-    Window_Renderer_Vec4f *c = &r->background;
-    glClearColor(c->x, c->y, c->z, c->w);
-
-    // tell vertex shader what is the resolution is
-    glUniform1fv(glGetUniformLocation(r->program, "resolution_x"), 1, &r->width);
-    glUniform1fv(glGetUniformLocation(r->program, "resolution_y"), 1, &r->height);
-
-    r->width = (float) width;
-    r->height = (float) height;
-  }
-
-
-  if(r->font_index > 0) {
-    GLint uniformLocation1 = glGetUniformLocation(r->program, "font_tex");
-    glUniform1i(uniformLocation1, r->font_index);	
-  }
-
-  r->tex_index = -1;  
-}
-
-WINDOW_DEF void window_renderer_imgui_begin(Window *w, Window_Event *e) {
-
-  (void) e;
-  int x, y;
-  window_get_mouse_position(w, &x, &y);
-
-  window_renderer.pos = window_renderer_vec2f((float) x, ((float) w->height - (float) y));
-  if(window_renderer.clicked) {
-    window_renderer.input = window_renderer.pos;
-  }
-}
-
-WINDOW_DEF void window_renderer_imgui_update(Window *w, Window_Event *e) {
-  (void) w;
-  if(e->type == WINDOW_EVENT_MOUSEPRESS) {    
-    window_renderer.clicked = true;
-  } else if(e->type == WINDOW_EVENT_MOUSERELEASE) {
-    window_renderer.released = true;
-  }  
-}
-
-WINDOW_DEF void window_renderer_imgui_end(Window *w, Window_Event *e) {
-  (void) w;
-  (void) e;
-  if(window_renderer.released) {
-    window_renderer.input = vec2f(-1.f, -1.f);
-  }
-    
-  window_renderer.clicked = false;
-  window_renderer.released = false;
-}
-
-WINDOW_DEF void window_renderer_end() {
-  Window_Renderer *r = &window_renderer;
-  
-  glBufferSubData(GL_ARRAY_BUFFER, 0, r->verticies_count * sizeof(Window_Renderer_Vertex), r->verticies);
-  glDrawArrays(GL_TRIANGLES, 0, r->verticies_count);
-  r->verticies_count = 0;
-}
-
-WINDOW_DEF void window_renderer_set_color(Window_Renderer_Vec4f color) {
-  Window_Renderer *r = &window_renderer;
-  r->background = color;
-}
-
-WINDOW_DEF void window_renderer_vertex(Window_Renderer_Vec2f p, Window_Renderer_Vec4f c, Window_Renderer_Vec2f uv) {
-
-  Window_Renderer *r = &window_renderer;
-
-  if(r->verticies_count < WINDOW_RENDERER_CAP) {
-    Window_Renderer_Vertex *last = &r->verticies[r->verticies_count];
-    last->position = p;
-    last->color = c;
-    last->uv = uv;
-    r->verticies_count++;	
-  } 
-}
-
-WINDOW_DEF void window_renderer_triangle(Window_Renderer_Vec2f p1, Window_Renderer_Vec2f p2, Window_Renderer_Vec2f p3, Window_Renderer_Vec4f c1, Window_Renderer_Vec4f c2, Window_Renderer_Vec4f c3, Window_Renderer_Vec2f uv1, Window_Renderer_Vec2f uv2, Window_Renderer_Vec2f uv3) {
-
-  Window_Renderer *r = &window_renderer;
-
-  if(r->verticies_count + 3 >= WINDOW_RENDERER_CAP) {
-    window_renderer_end();
-  }
-    
-  window_renderer_vertex(p1, c1, uv1);
-  window_renderer_vertex(p2, c2, uv2);
-  window_renderer_vertex(p3, c3, uv3);	
-}
-
-WINDOW_DEF void window_renderer_solid_triangle(Window_Renderer_Vec2f p1, Window_Renderer_Vec2f p2, Window_Renderer_Vec2f p3, Window_Renderer_Vec4f c) {
-
-  Window_Renderer *r = &window_renderer;
-
-  if(r->verticies_count + 3 >= WINDOW_RENDERER_CAP) {
-    window_renderer_end();
-  }
-	
-  Window_Renderer_Vec2f uv = window_renderer_vec2f(-1, -1);
-  window_renderer_vertex(p1, c, uv);
-  window_renderer_vertex(p2, c, uv);
-  window_renderer_vertex(p3, c, uv);
-}
-
-WINDOW_DEF void window_renderer_quad(Window_Renderer_Vec2f p1, Window_Renderer_Vec2f p2, Window_Renderer_Vec2f p3, Window_Renderer_Vec2f p4, Window_Renderer_Vec4f c1, Window_Renderer_Vec4f c2, Window_Renderer_Vec4f c3, Window_Renderer_Vec4f c4, Window_Renderer_Vec2f uv1, Window_Renderer_Vec2f uv2, Window_Renderer_Vec2f uv3, Window_Renderer_Vec2f uv4) {
-  window_renderer_triangle(p1, p2, p4, c1, c2, c4, uv1, uv2, uv4);
-  window_renderer_triangle(p1, p3, p4, c1, c3, c4, uv1, uv3, uv4);
-}
-
-WINDOW_DEF void window_renderer_solid_rect(Window_Renderer_Vec2f pos, Window_Renderer_Vec2f size, Window_Renderer_Vec4f color) {
-  Vec2f uv = vec2f(-1, -1);
-  window_renderer_quad(pos,
-		       window_renderer_vec2f(pos.x + size.x, pos.y),
-		       window_renderer_vec2f(pos.x, pos.y + size.y),
-		       window_renderer_vec2f(pos.x + size.x, pos.y + size.y),
-		       color, color, color, color, uv, uv, uv, uv);
-}
-
-WINDOW_DEF void window_renderer_solid_rounded_rect(Vec2f pos, Vec2f size, float radius, int parts, Vec4f color) {
-  if(size.y < 4 * radius) radius = size.y / 4; 
-
-  window_renderer_solid_rect(vec2f(pos.x, pos.y + radius),
-		  vec2f(size.x, size.y - 2 * radius),
-		  color);
-
-  window_renderer_solid_rect(vec2f(pos.x + radius, pos.y),
-		  vec2f(size.x - 2 * radius, size.y),
-		  color);
-
-  pos = vec2f(pos.x + radius, pos.y + radius);
-  size = vec2f(size.x - 2 * radius, size.y - 2 * radius);
-
-  //bottom left
-  window_renderer_solid_circle(pos,
-		    PI, PI * 3 / 2,
-		    radius,
-		    parts,
-		    color);
-
-  //bottom right
-  window_renderer_solid_circle(vec2f(pos.x + size.x, pos.y),
-		    PI * 3 / 2, 2 * PI,
-		    radius,
-		    parts,
-		    color);
-
-  //top left
-  window_renderer_solid_circle(vec2f(pos.x, pos.y + size.y),
-		    PI / 2, PI,
-		    radius,
-		    parts,
-		    color);
-
-  //top right
-  window_renderer_solid_circle(vec2f(pos.x + size.x, pos.y + size.y),
-		    0, PI /2,
-		    radius,
-		    parts,
-		    color);
-}
-
-WINDOW_DEF bool window_renderer_button_impl(Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f *c) {
-  Window_Renderer_Vec2f pos = window_renderer.input;
-  bool holding =
-    p.x <= pos.x &&
-    (pos.x - p.x) <= s.x &&
-    p.y <= pos.y &&
-    (pos.y - p.y) <= s.y;
-  if(holding) {
-    c->w *= .5;
-  }
-  return holding;
-}
-
-WINDOW_DEF bool window_renderer_button(Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f c) {
-  bool holding = window_renderer_button_impl(p, s, &c);
-  window_renderer_solid_rect(p, s, c);
-  return window_renderer.released && holding;
-}
-
-WINDOW_DEF bool window_renderer_texture_button(unsigned int texture, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s) {
-  Window_Renderer_Vec4f c = vec4f(1, 1, 1, 1);
-  bool holding = window_renderer_button_impl(p, s, &c);
-  window_renderer_texture_colored(texture, p, s, vec2f(0, 0), vec2f(1, 1), c);
-  return window_renderer.released && holding;
-}
-
-WINDOW_DEF bool window_renderer_texture_button_ex(unsigned int texture, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f c, Window_Renderer_Vec2f uvp, Window_Renderer_Vec2f uvs) {
-  bool holding = window_renderer_button_impl(p, s, &c);
-  window_renderer_texture_colored(texture, p, s, uvp, uvs, c);
-  return window_renderer.released && holding;
-}
-
-WINDOW_DEF bool window_renderer_slider(Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f knot_color, Window_Renderer_Vec4f color, float value, float *cursor) {
-  
-  Window_Renderer_Vec2f cursor_pos = vec2f(p.x + s.x * value, p.y + s.y/2);
-  float cursor_radius = s.y * 1.125f;
-  *cursor = value;
-
-  Window_Renderer_Vec2f input = window_renderer.input;
-  float dx = input.x - cursor_pos.x;
-  float dy = input.y - cursor_pos.y;
-  bool knot_clicked = ((dx * dx) + (dy *dy)) <= (cursor_radius * cursor_radius);
-
-  if(knot_clicked) {
-    cursor_pos.x = window_renderer.pos.x;
-    if((cursor_pos.x - p.x) < 0) cursor_pos.x = p.x;
-    if(s.x < (cursor_pos.x - p.x)) cursor_pos.x = p.x + s.x;
-    *cursor = (cursor_pos.x - p.x) / s.x;
-  }
-  
-  window_renderer_solid_rect(p, vec2f(cursor_pos.x - p.x, s.y), knot_color);
-  window_renderer_solid_rect(vec2f(cursor_pos.x, p.y), vec2f(s.x - cursor_pos.x + p.x, s.y), color);
-  window_renderer_solid_circle(cursor_pos, 0, 2 * PI, cursor_radius, 20, knot_color);
-
-  bool clicked =
-    p.x <= input.x &&
-    (input.x - p.x) <= s.x&&
-    p.y <= input.y &&
-    (input.y - p.y) <= s.y;    
-  if(window_renderer.released && knot_clicked) {    
-    return true;
-  }
-  if(window_renderer.clicked && clicked) {
-    *cursor = (window_renderer.input.x - p.x) / s.x;
-    return true;
-  }
-
-  return false;
-}
-
-WINDOW_DEF void window_renderer_solid_rounded_shaded_rect(Window_Renderer_Vec2f pos,
-							  Window_Renderer_Vec2f size,
-							  float radius,
-							  int parts,
-							  float shade_px,
-							  Window_Renderer_Vec4f color) {
-  window_renderer_solid_rounded_rect(vec2f(pos.x - shade_px, pos.y - shade_px),
-				     vec2f(size.x + 2 *shade_px, size.y + 2 *shade_px),
-				     radius, parts, vec4f(0, 0, 0, color.w * .5f));
-  window_renderer_solid_rounded_rect(pos, size, radius, parts, color);
-}
-
-WINDOW_DEF void window_renderer_solid_rect_angle(Window_Renderer_Vec2f pos, Window_Renderer_Vec2f size,
-						 float angle,
-						 Window_Renderer_Vec4f color) {
-  Vec2f uv = vec2f(-1, -1);
-
-  float s = sinf(angle);
-  float c = cosf(angle);
-
-  float dy1 = s * size.x;
-  float dx1 = c * size.x;
-  
-  float dy2 = c * size.y;
-  float dx2 = s * size.y;
-
-  window_renderer_triangle(pos,
-			   window_renderer_vec2f(pos.x + dx1, pos.y + dy1),
-			   window_renderer_vec2f(pos.x - dx2, pos.y + dy2),
-			   color, color, color, uv, uv, uv);
-
-  window_renderer_triangle(window_renderer_vec2f(pos.x + dx1, pos.y + dy1),
-			   window_renderer_vec2f(pos.x - dx2, pos.y + dy2),
-			   window_renderer_vec2f(pos.x + dx1 - dx2, pos.y + dy1 + dy2),
-			   color, color, color, uv, uv, uv);
-}
-
-WINDOW_DEF void window_renderer_texture(unsigned int texture,
-					Window_Renderer_Vec2f p, Window_Renderer_Vec2f s,
-					Window_Renderer_Vec2f uvp, Window_Renderer_Vec2f uvs) {
-
-  Window_Renderer *r = &window_renderer;
-
-  if(r->tex_index != -1) {
-    window_renderer_end();
-  }
-
-  r->tex_index = (int) texture;
-  GLint uniformLocation1 = glGetUniformLocation(r->program, "tex");
-  glUniform1i(uniformLocation1, r->tex_index);
-    
-  Vec4f c = vec4f(1, 1, 1, 1);
-  window_renderer_quad(p,
-		       window_renderer_vec2f(p.x + s.x, p.y),
-		       window_renderer_vec2f(p.x, p.y + s.y),
-		       window_renderer_vec2f(p.x + s.x, p.y + s.y),
-		       c, c, c, c,
-		       uvp,
-		       window_renderer_vec2f(uvp.x + uvs.x, uvp.y),
-		       window_renderer_vec2f(uvp.x, uvp.y + uvs.y),
-		       window_renderer_vec2f(uvp.x + uvs.x, uvp.y + uvs.y));
-}
-
-WINDOW_DEF void window_renderer_texture_colored(unsigned int texture,
-						Window_Renderer_Vec2f p, Window_Renderer_Vec2f s,
-					        Window_Renderer_Vec2f uvp, Window_Renderer_Vec2f uvs,
-						Window_Renderer_Vec4f c) {
-  Window_Renderer *r = &window_renderer;
-  
-  if(r->tex_index != -1) {
-    window_renderer_end();
-  }
-
-  r->tex_index = (int) texture;
-  GLint uniformLocation1 = glGetUniformLocation(r->program, "tex");
-  glUniform1i(uniformLocation1, r->tex_index);
-  
-  window_renderer_quad(
-		       p,
-		       window_renderer_vec2f(p.x + s.x, p.y),
-		       window_renderer_vec2f(p.x, p.y + s.y),
-		       window_renderer_vec2f(p.x + s.x, p.y + s.y),
-		       c, c, c, c,
-		       uvp,
-		       window_renderer_vec2f(uvp.x + uvs.x, uvp.y),
-		       window_renderer_vec2f(uvp.x, uvp.y + uvs.y),
-		       window_renderer_vec2f(uvp.x + uvs.x, uvp.y + uvs.y));
-}
-
-
-WINDOW_DEF void window_renderer_solid_circle(Window_Renderer_Vec2f pos,
-					     float start_angle, float end_angle,
-					     float radius,
-					     int parts,
-					     Window_Renderer_Vec4f color) {
-  float P = end_angle - start_angle;
-  float A = start_angle;
-
-  Window_Renderer_Vec2f old = {radius * cosf(A),
-			       radius * sinf(A)};
-
-  float t = 0.0f;
-  float dt = 1.f / (float) parts;
-
-  for(int j=1;j<=parts;j++) {
-    t += dt;
-    Window_Renderer_Vec2f new = {radius * cosf(A + P * t),
-				 radius * sinf(A + P * t)};
-    window_renderer_solid_triangle(pos,
-				   window_renderer_vec2f(pos.x + new.x, pos.y + new.y),
-				   window_renderer_vec2f(pos.x + old.x, pos.y + old.y),
-				   color);
-    old = new;
-  }
-
-  
-}
-
-WINDOW_DEF bool window_renderer_push_texture(int width, int height, const void *data, bool grey, unsigned int *index) {
-
-  Window_Renderer *r = &window_renderer;
-
-  GLenum current_texture;
-  switch(r->images_count) {
-  case 0:
-    current_texture = GL_TEXTURE0;
-    break;
-  case 1:
-    current_texture = GL_TEXTURE1;
-    break;
-  case 2:
-    current_texture = GL_TEXTURE2;
-    break;
-  case 3:
-    current_texture = GL_TEXTURE3;
-    break;
-  default:
-    return false;
-  }
-  
-  glActiveTexture(current_texture);
-  
-  glGenTextures(1, &r->textures);
-  glBindTexture(GL_TEXTURE_2D, r->textures);
-
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
-  if(grey) {
-    glTexImage2D(GL_TEXTURE_2D,
-		 0,
-		 GL_ALPHA,
-		 width,
-		 height,
-		 0,
-		 GL_ALPHA,
-		 GL_UNSIGNED_BYTE,
-		 data);	
-  } else {
-    glTexImage2D(GL_TEXTURE_2D,
-		 0,
-		 GL_RGBA,
-		 width,
-		 height,
-		 0,
-		 GL_RGBA,
-		 GL_UNSIGNED_INT_8_8_8_8_REV,
-		 data);
-  }
-
-  *index = r->images_count++;
-
-  return true;
-}
-
-#ifdef WINDOW_STB_TRUETYPE
-#include <stdio.h>
-
-#define WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE 1024
-
-WINDOW_DEF bool window_renderer_push_font(const char *filepath, float pixel_height) {
-
-  FILE *f = fopen(filepath, "rb");
-  if(!f) {
-    WINDOW_LOG("Can not open file: %s\n", filepath);
-    return false;
-  }
-
-  if(fseek(f, 0, SEEK_END) < 0) {
-    WINDOW_LOG("Can not seek in file: %s\n", filepath);
-    fclose(f);
-    return false;
-  }
-
-  long m = ftell(f);
-  if(m < 0) {
-    WINDOW_LOG("Can not read file(ftell): %s\n", filepath);
-    fclose(f);
-    return false;
-  }  
-
-  if(fseek(f, 0, SEEK_SET) < 0) {
-    WINDOW_LOG("Can not seek in file: %s\n", filepath);
-    fclose(f);
-    return false;
-  }
-
-  unsigned char *buffer = (unsigned char *) malloc((size_t) m);
-  if(!buffer) {
-    WINDOW_LOG("Can not allocate enough memory\n");
-    fclose(f);
-    return false;
-  }
-
-  size_t _m = (size_t) m;
-  size_t n = fread(buffer, 1, _m, f);
-  if(n != _m) {
-    WINDOW_LOG("Failed to read file(fread): %s\n", filepath);
-    free(buffer);
-    fclose(f);
-    return false;
-  }
-    
-  fclose(f);
-
-  unsigned char *temp_bitmap = malloc(WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE *
-				      WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE);
-  
-  Window_Renderer *r = &window_renderer;
-  stbtt_BakeFontBitmap(buffer,0, pixel_height,
-		       temp_bitmap,
-		       WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE,
-		       WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE,
-		       32, 96, r->font_cdata);
-
-  unsigned int tex;
-  bool result = push_texture(1024, 1024, temp_bitmap, true, &tex);
-
-  r->font_index = (int) tex;
-  r->font_height = pixel_height;
-
-  free(buffer);
-  free(temp_bitmap);
-    
-  return result;
-}
-
-WINDOW_DEF void window_renderer_text(const char *cstr, size_t cstr_len, Window_Renderer_Vec2f pos, float factor, Window_Renderer_Vec4f color) {
-
-  Window_Renderer *r = &window_renderer;
-
-  float x = 0;
-  float y = 0;
-  color.w *= -1;
-    
-  for(size_t i=0;i<cstr_len;i++) {
-    unsigned char c = cstr[i];
-    if (c < 32 && c >= 128) {
-      continue;
-    }
-
-    float _y = y;
-
-    stbtt_aligned_quad q;
-    stbtt_GetBakedQuad(r->font_cdata,
-		       WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE,
-		       WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE, c-32, &x, &y, &q,1);
-    //1=opengl & d3d10+,0=d3d9
-
-    Window_Renderer_Vec2f p = vec2f(pos.x + q.x0 * factor,pos.y + y + _y + factor * (y - q.y1) );
-    Window_Renderer_Vec2f s = vec2f((q.x1 - q.x0) * factor, (q.y1 - q.y0) * factor);
-    Window_Renderer_Vec2f uvp = vec2f(q.s0, 1 - q.t1);
-    Window_Renderer_Vec2f uvs = vec2f(q.s1 - q.s0, q.t1 - q.t0);	
-
-	
-    window_renderer_quad(
-			 p,
-			 window_renderer_vec2f(p.x + s.x, p.y),
-			 window_renderer_vec2f(p.x, p.y + s.y),
-			 window_renderer_vec2f(p.x + s.x, p.y + s.y),
-			 color, color, color, color,
-			 uvp,
-			 window_renderer_vec2f(uvp.x + uvs.x, uvp.y),
-			 window_renderer_vec2f(uvp.x, uvp.y + uvs.y),
-			 window_renderer_vec2f(uvp.x + uvs.x, uvp.y + uvs.y));       
-  }
-
-}
-
-WINDOW_DEF void window_renderer_text_wrapped(const char *cstr, size_t cstr_len, Window_Renderer_Vec2f *pos, Window_Renderer_Vec2f size, float scale, Window_Renderer_Vec4f color) {
-  Window_Renderer *r = &window_renderer;
-  Vec2f text_size;
-  
-  size_t i = 0;
-  while(i < cstr_len) {
-    size_t j=1;
-    for(;j<cstr_len - i;j++) {
-      measure_text_len(cstr + i, j, scale, &text_size);
-      if(text_size.x >= size.x) break;
-    }
-
-    draw_text_len_colored(cstr + i, j, *pos, scale, color);
-    i += j;
-    pos->y -= r->font_height;    
-  }
-}
-
-WINDOW_DEF bool window_renderer_text_button(const char *cstr, size_t cstr_len, float scale, Window_Renderer_Vec4f text_color, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f c) {
-  bool holding = window_renderer_button_impl(p, s, &c);
-  window_renderer_solid_rect(p, s, c);
-  if(holding) {
-    text_color.w *= .5;
-  }
-
-  Vec2f size;
-  window_renderer_measure_text(cstr, cstr_len, scale, &size);
-
-  if(size.x <= s.x && size.y <= s.y) {
-    Vec2f pos = vec2f(p.x + s.x / 2 - size.x / 2,
-		      p.y + s.y / 2 - size.y / 2);
-    window_renderer_text(cstr, cstr_len, pos, scale, text_color);
-  }
-  
-  return window_renderer.released && holding;
-}
-
-WINDOW_DEF void window_renderer_measure_text(const char *cstr, size_t cstr_len, float factor, Vec2f *size) {
-  Window_Renderer *r = &window_renderer;
-
-  float hi = 0;
-  float lo = 0;
-
-  size->y = 0;
-  size->x = 0;
-
-  float x = 0;
-  float y = 0;
-    
-  for(size_t i=0;i<cstr_len;i++) {
-    unsigned char c = cstr[i];
-    if (c < 32 && c >= 128) {
-      continue;
-    }
-
-    stbtt_aligned_quad q;
-    stbtt_GetBakedQuad(r->font_cdata,
-		       WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE,
-		       WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE,
-		       c-32, &x, &y, &q, 1);
-
-    size->x = q.y1 - q.y0;
-    float height = q.x1 - q.x0;
-    if(height > hi) hi = height;
-    if(height < lo) lo = height;
-  }
-  size->x = x * factor;  
-  size->y = (hi - lo) * factor;
-}
-
-#endif //WINDOW_STB_TRUETYPE
-
-#ifdef WINDOW_STB_IMAGE
-
-WINDOW_DEF bool window_renderer_push_image(const char *filepath, int *width, int *height, unsigned int *index) {
-
-  unsigned char *image_data  = stbi_load(filepath, width, height, NULL, 4);
-  if(image_data == NULL)  {
-    return false;
-  }
-
-  bool result = window_renderer_push_texture(*width, *height, image_data, false, index);
-  stbi_image_free(image_data);
-
-  return result;
-}
-
-#endif // WINDOW_STB_IMAGE
-
-#endif //WINDOW_NO_RENDERER
-
-////////////////////////////////////////////////////////////////////////
-// opengl - definitions
-////////////////////////////////////////////////////////////////////////
-
-PROC _glActiveTexture = NULL;
-void glActiveTexture(GLenum texture) { _glActiveTexture(texture); }
-
-PROC _glGenVertexArrays = NULL;
-void glGenVertexArrays(GLsizei n, GLuint *arrays) { _glGenVertexArrays(n, arrays); }
-
-PROC _glBindVertexArray = NULL;
-void glBindVertexArray(GLuint array) { _glBindVertexArray(array); }
-
-PROC _glGenBuffers = NULL;
-void glGenBuffers(GLsizei n, GLuint *buffers) { _glGenBuffers(n, buffers); }
-
-PROC _glBindBuffer = NULL;
-void glBindBuffer(GLenum target, GLuint buffer) { _glBindBuffer(target, buffer); }
-
-PROC _glBufferData = NULL;
-void glBufferData(GLenum target, GLsizeiptr size, const void * data, GLenum usage) { _glBufferData(target, size, data, usage); }
-
-PROC _glEnableVertexAttribArray = NULL;
-void glEnableVertexAttribArray(GLuint index) { _glEnableVertexAttribArray(index); }
-
-PROC _glVertexAttribPointer = NULL;
-void glVertexAttribPointer(GLuint index,
-			   GLint size,
-			   GLenum type,
-			   GLboolean normalized,
-			   GLsizei stride,
-			   const void * pointer) {
-  _glVertexAttribPointer(index, size, type, normalized, stride, pointer);
-}
-
-PROC _glCreateShader = NULL;
-GLuint glCreateShader(GLenum shaderType) { return (GLuint) _glCreateShader(shaderType); }
-
-PROC _glShaderSource = NULL;
-void glShaderSource(GLuint shader,
-		    GLsizei count,
-		    const GLchar **_string,
-		    const GLint *length) {
-  _glShaderSource(shader, count, _string, length);
-}
-
-PROC _glCompileShader = NULL;
-void glCompileShader(GLuint shader) { _glCompileShader(shader); }
-
-PROC _glGetShaderiv = NULL;
-void glGetShaderiv(GLuint shader, GLenum pname, GLint *params) {
-  _glGetShaderiv(shader, pname, params);
-}
-
-PROC _glGetShaderInfoLog = NULL;
-void glGetShaderInfoLog(GLuint shader,
-			GLsizei maxLength,
-			GLsizei *length,
-			GLchar *infoLog) {
-  _glGetShaderInfoLog(shader, maxLength, length, infoLog);
-}
-
-PROC _glCreateProgram = NULL;
-GLuint glCreateProgram(void) { return (GLuint) _glCreateProgram(); }
-
-PROC _glAttachShader = NULL;
-void glAttachShader(GLuint program, GLuint shader) { _glAttachShader(program, shader); }
-
-PROC _glLinkProgram = NULL;
-void glLinkProgram(GLuint program) { _glLinkProgram(program); }
-
-PROC _glGetProgramInfoLog = NULL;
-void glGetProgramInfoLog(GLuint program,
-			 GLsizei maxLength,
-			 GLsizei *length,
-			 GLchar *infoLog) {
-  _glGetProgramInfoLog(program, maxLength, length, infoLog);
-}
-
-PROC _glGetProgramiv = NULL;
-void glGetProgramiv(GLuint program,
-		    GLenum pname,
-		    GLint *params) {
-  _glGetProgramiv(program, pname, params);
-}
-
-PROC _glUseProgram = NULL;
-void glUseProgram(GLuint program) { _glUseProgram(program); }
-
-PROC _glBufferSubData = NULL;
-void glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void * data) {
-  _glBufferSubData(target, offset, size, data);
-}
-
-PROC _glUniform2f = NULL;
-void glUniform2f(GLint location, GLfloat v0, GLfloat v1) {
-  _glUniform2f(location, v0, v1);
-}
-
-PROC _glUniform1f = NULL;
-void glUniform1f(GLint location, GLfloat v0) {
-  _glUniform1f(location, v0);
-}
-
-PROC _glUniform1fv = NULL;
-void glUniform1fv(GLint location, GLsizei count, const GLfloat *value) {
-  _glUniform1fv(location, count, value);
-}
-
-PROC _glUniform2fv = NULL;
-void glUniform2fv(GLint location, GLsizei count, const GLfloat *value) {
-  _glUniform2fv(location, count, value);
-}
-
-PROC _glUniform1i = NULL;
-void glUniform1i(GLint location, GLint v0) {
-  _glUniform1i(location, v0);
-}
-
-PROC _glGetUniformLocation = NULL;
-GLint glGetUniformLocation(GLuint program, const GLchar *name) { return (GLint) _glGetUniformLocation(program, name); }
-
-PROC _glGetActiveUniform = NULL;
-void glGetActiveUniform(GLuint program,
-			GLuint index,
-			GLsizei bufSize,
-			GLsizei *length,
-			GLint *size,
-			GLenum *type,
-			GLchar *name) {
-  _glGetActiveUniform(program, index, bufSize, length, size, type, name);
-}
-
-PROC _glGetUniformfv = NULL;
-void glGetUniformfv(GLuint program, GLint location, GLfloat *params) {
-  _glGetUniformfv(program, location, params);
-}
-
-PROC _glGetUniformiv = NULL;
-void glGetUniformiv(GLuint program, GLint location, GLsizei bufSize, GLint *params) {
-  _glGetUniformiv(program, location, bufSize, params);
-}
-
-PROC _wglSwapIntervalEXT = NULL;
-int wglSwapIntervalEXT(GLint interval) {
-  return (int) _wglSwapIntervalEXT(interval);
-}
-
-PROC _glSampleCoverage = NULL;
-void glSampleCoverage(GLfloat value, GLboolean invert) {
-  _glSampleCoverage(value, invert);
-}
-
-
-WINDOW_DEF void window_win32_opengl_init() {
-  if(_glActiveTexture != NULL) {
-    return;
-  }
-  
-  _glActiveTexture = wglGetProcAddress("glActiveTexture");
-  _glGenVertexArrays = wglGetProcAddress("glGenVertexArrays");
-  _glBindVertexArray= wglGetProcAddress("glBindVertexArray");
-  _glGenBuffers= wglGetProcAddress("glGenBuffers");
-  _glBindBuffer= wglGetProcAddress("glBindBuffer");
-  _glBufferData= wglGetProcAddress("glBufferData");
-  _glEnableVertexAttribArray= wglGetProcAddress("glEnableVertexAttribArray");
-  _glVertexAttribPointer= wglGetProcAddress("glVertexAttribPointer");
-  _glCreateShader= wglGetProcAddress("glCreateShader");
-  _glShaderSource= wglGetProcAddress("glShaderSource");
-  _glCompileShader= wglGetProcAddress("glCompileShader");
-  _glGetShaderiv= wglGetProcAddress("glGetShaderiv");
-  _glGetShaderInfoLog= wglGetProcAddress("glGetShaderInfoLog");
-  _glCreateProgram= wglGetProcAddress("glCreateProgram");
-  _glAttachShader= wglGetProcAddress("glAttachShader");
-  _glLinkProgram= wglGetProcAddress("glLinkProgram");
-  _glGetProgramInfoLog= wglGetProcAddress("glGetProgramInfoLog");
-  _glGetProgramiv= wglGetProcAddress("glGetProgramiv");
-  _glUseProgram= wglGetProcAddress("glUseProgram");
-  _glBufferSubData= wglGetProcAddress("glBufferSubData");
-  _glUniform2f= wglGetProcAddress("glUniform2f");
-  _glUniform1f= wglGetProcAddress("glUniform1f");
-  _glUniform1i= wglGetProcAddress("glUniform1i");
-  _glGetUniformLocation= wglGetProcAddress("glGetUniformLocation");
-  _glGetActiveUniform= wglGetProcAddress("glGetActiveUniform");
-  _glGetUniformfv= wglGetProcAddress("glGetUniformfv");
-  _glUniform1fv= wglGetProcAddress("glUniform1fv");
-  _glUniform2fv= wglGetProcAddress("glUniform2fv");
-  _glGetUniformiv= wglGetProcAddress("glGetUniformiv");
-  _wglSwapIntervalEXT = wglGetProcAddress("wglSwapIntervalEXT");
-}
-
-#endif //WINDOW_IMPLEMENTATION
-
-#endif //WINDOW_H
 #ifndef MINIZ_EXPORT
 #define MINIZ_EXPORT
 #endif
@@ -15574,6 +9330,10 @@ mz_bool mz_zip_end(mz_zip_archive *pZip)
 #endif /*#ifndef MINIZ_NO_ARCHIVE_APIS*/
 
 #endif // MINIZ_IMPLEMENTATION
+#endif // MINIZ_DISABLE
+
+#ifdef STB_IMAGE_ENABLE
+
 /* stb_image - v2.27 - public domain image loader - http://nothings.org/stb
                                   no warranty implied; use at your own risk
 
@@ -23834,6 +17594,10 @@ ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ------------------------------------------------------------------------------
 */
+#endif // STB_IMAGE_DISABLE
+
+#ifdef STB_TRUETYPE_ENABLE
+
 // stb_truetype.h - v1.26 - public domain
 // authored from 2009-2021 by Sean Barrett / RAD Game Tools
 //
@@ -28911,4 +22675,6258 @@ ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ------------------------------------------------------------------------------
 */
+#endif // STB_TRUETYPE_DISABLE
+
+#ifdef AUDIO_ENABLE
+
+#ifndef AUDIO_H
+#define AUDIO_H
+
+// win32
+//   mingw: -lole32 -lxaudio2_8
+//   msvc : ole32.lib
+
+// linux
+//   gcc  : -lasound
+
+#include <stdbool.h>
+#ifdef _WIN32
+#  include <xaudio2.h>
+#elif linux
+#  include <alsa/asoundlib.h>
+#endif //_WIN32
+
+#ifndef AUDIO_DEF
+#  define AUDIO_DEF static inline
+#endif //AUDIO_DEF
+
+typedef enum{
+    AUDIO_FMT_S16,
+    AUDIO_FMT_FLT,
+}Audio_Fmt;
+
+typedef struct{
+    int channels;
+    int sample_rate;
+    int sample_size;
+
+#ifdef _WIN32
+    IXAudio2SourceVoice *xaudio2_source_voice;
+    HANDLE semaphore;
+#elif linux
+    snd_pcm_t *alsa_snd_pcm;
+#endif
+}Audio;
+
+// Public
+AUDIO_DEF bool audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_rate);
+AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, int samples);
+//AUDIO_DEF void audio_play_async(Audio *audio, unsigned char *data, int samples);
+AUDIO_DEF void audio_block(Audio *audio);
+AUDIO_DEF void audio_free(Audio *audio);
+
+AUDIO_DEF bool audio_fmt_bits_per_sample(int *bits, Audio_Fmt fmt);
+
+// Private
+
+#ifdef AUDIO_IMPLEMENTATION
+
+#ifdef _WIN32
+
+static bool audio_co_initialized = false;
+static IXAudio2* audio_xaudio2 = NULL;
+static IXAudio2MasteringVoice *audio_xaudio2_mastering_voice = NULL;
+
+AUDIO_DEF void audio_xaudio2_OnBufferEnd(IXAudio2VoiceCallback* This, void* pBufferContext);
+AUDIO_DEF void audio_xaudio2_OnStreamEnd(IXAudio2VoiceCallback* This);
+AUDIO_DEF void audio_xaudio2_OnVoiceProcessingPassEnd(IXAudio2VoiceCallback* This);
+AUDIO_DEF void audio_xaudio2_OnVoiceProcessingPassStart(IXAudio2VoiceCallback* This, UINT32 SamplesRequired);
+AUDIO_DEF void audio_xaudio2_OnBufferStart(IXAudio2VoiceCallback* This, void* pBufferContext);
+AUDIO_DEF void audio_xaudio2_OnLoopEnd(IXAudio2VoiceCallback* This, void* pBufferContext);
+AUDIO_DEF void audio_xaudio2_OnVoiceError(IXAudio2VoiceCallback* This, void* pBufferContext, HRESULT Error);
+
+static IXAudio2VoiceCallback audio_xaudio2_callbacks = {
+    .lpVtbl = &(IXAudio2VoiceCallbackVtbl) {
+	.OnStreamEnd = audio_xaudio2_OnStreamEnd,
+	.OnVoiceProcessingPassEnd = audio_xaudio2_OnVoiceProcessingPassEnd,
+	.OnVoiceProcessingPassStart = audio_xaudio2_OnVoiceProcessingPassStart,
+	.OnBufferEnd = audio_xaudio2_OnBufferEnd,
+	.OnBufferStart = audio_xaudio2_OnBufferStart,
+	.OnLoopEnd = audio_xaudio2_OnLoopEnd,
+	.OnVoiceError = audio_xaudio2_OnVoiceError,
+    }
+};
+
+AUDIO_DEF bool audio_fmt_format_tag(int *tag, Audio_Fmt fmt) {
+    switch(fmt) {
+    case AUDIO_FMT_S16: {
+	*tag = WAVE_FORMAT_PCM;
+	return true;
+    } break;
+    case AUDIO_FMT_FLT: {
+	*tag = WAVE_FORMAT_IEEE_FLOAT;
+	return true;
+    } break;
+    default: {
+	return false;	
+    } break;
+    }
+}
+
+AUDIO_DEF bool audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_rate) {    
+    audio->sample_rate = sample_rate;
+    audio->channels    = channels;
+
+    int bits_per_sample;
+    if(!audio_fmt_bits_per_sample(&bits_per_sample, fmt)) {
+	return false;
+    }
+    int format_tag;
+    if(!audio_fmt_format_tag(&format_tag, fmt)) {
+	return false;
+    }
+    audio->sample_size = bits_per_sample * channels / 8;
+
+    if( !audio_co_initialized ) {
+	if( FAILED(CoInitializeEx(NULL, COINIT_MULTITHREADED)) ) {
+	    return false;
+	}
+	audio_co_initialized = true;
+    } 
+
+    if( !audio_xaudio2 &&
+	FAILED(XAudio2Create(&audio_xaudio2, 0, XAUDIO2_DEFAULT_PROCESSOR)) ) {
+	return false;
+    }
+
+    if(!audio_xaudio2_mastering_voice &&
+       FAILED(audio_xaudio2->lpVtbl->
+	      CreateMasteringVoice(audio_xaudio2,
+				   &audio_xaudio2_mastering_voice,
+				   channels,
+				   sample_rate,
+				   0,
+				   0,
+				   NULL,
+				   AudioCategory_GameEffects)) ) {
+	return false;
+    }
+
+    WAVEFORMATEX wave_format;
+    wave_format.wFormatTag = (WORD) format_tag;
+    wave_format.nChannels = (WORD) channels;
+    wave_format.nSamplesPerSec = sample_rate;
+    wave_format.wBitsPerSample = (WORD) bits_per_sample;
+    wave_format.nBlockAlign = (wave_format.nChannels * wave_format.wBitsPerSample) / 8;
+    wave_format.nAvgBytesPerSec = wave_format.nSamplesPerSec * wave_format.nBlockAlign;
+    wave_format.cbSize = 0;
+    audio->xaudio2_source_voice = NULL;
+    if( FAILED(audio_xaudio2->lpVtbl->
+	       CreateSourceVoice(audio_xaudio2,
+				 &audio->xaudio2_source_voice,
+				 &wave_format,
+				 0,
+				 1.f,
+				 &audio_xaudio2_callbacks,
+				 NULL,
+				 NULL)) ) {
+	return false;
+    }
+
+    audio->xaudio2_source_voice->lpVtbl->Start(audio->xaudio2_source_voice, 0, XAUDIO2_COMMIT_NOW);    
+    audio->semaphore = CreateSemaphore(NULL, 0, 1, NULL);
+    ReleaseSemaphore(audio->semaphore, 1, NULL);
+    
+    if(GetLastError() == ERROR_ALREADY_EXISTS) {
+	return false;
+    }
+    
+    return true;
+}
+
+AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, int samples) {
+    XAUDIO2_BUFFER xaudioBuffer = {0};
+  
+    xaudioBuffer.AudioBytes = samples * audio->sample_size;
+    xaudioBuffer.pAudioData = data;
+    xaudioBuffer.pContext = audio;
+    
+    audio->xaudio2_source_voice->lpVtbl->SubmitSourceBuffer(audio->xaudio2_source_voice, &xaudioBuffer, NULL);
+
+    WaitForSingleObject((audio)->semaphore, INFINITE);
+}
+
+AUDIO_DEF void audio_play_async(Audio *audio, unsigned char *data, int samples) {
+    XAUDIO2_BUFFER xaudioBuffer = {0};
+  
+    xaudioBuffer.AudioBytes = samples * audio->sample_size;
+    xaudioBuffer.pAudioData = data;
+    xaudioBuffer.pContext = audio;
+    
+    audio->xaudio2_source_voice->lpVtbl->SubmitSourceBuffer(audio->xaudio2_source_voice, &xaudioBuffer, NULL);
+}
+
+AUDIO_DEF void audio_block(Audio *audio) {
+    while(1) {
+	Sleep(10);
+	DWORD result = WaitForSingleObject(audio->semaphore, 0);
+	if(result == WAIT_OBJECT_0) {
+	    return;
+	}
+    }
+}
+
+AUDIO_DEF void audio_free(Audio *audio) {
+    audio->xaudio2_source_voice->lpVtbl->Stop(audio->xaudio2_source_voice, 0, 0);
+    audio->xaudio2_source_voice->lpVtbl->DestroyVoice(audio->xaudio2_source_voice);
+    CloseHandle(audio->semaphore);
+}
+
+AUDIO_DEF void audio_xaudio2_OnBufferEnd(IXAudio2VoiceCallback* This, void* pBufferContext) {
+    (void) This;
+    Audio *audio = (Audio *) pBufferContext;
+    ReleaseSemaphore(audio->semaphore, 1, NULL);
+}
+AUDIO_DEF void audio_xaudio2_OnBufferStart(IXAudio2VoiceCallback* This, void* pBufferContext) { (void) This; (void) pBufferContext; }
+AUDIO_DEF void audio_xaudio2_OnStreamEnd(IXAudio2VoiceCallback* This) { (void) This; }
+AUDIO_DEF void audio_xaudio2_OnVoiceProcessingPassEnd(IXAudio2VoiceCallback* This) { (void) This; }
+AUDIO_DEF void audio_xaudio2_OnVoiceProcessingPassStart(IXAudio2VoiceCallback* This, UINT32 SamplesRequired) { (void) This; (void) SamplesRequired; }
+AUDIO_DEF void audio_xaudio2_OnLoopEnd(IXAudio2VoiceCallback* This, void* pBufferContext) { (void) This; (void) pBufferContext; }
+AUDIO_DEF void audio_xaudio2_OnVoiceError(IXAudio2VoiceCallback* This, void* pBufferContext, HRESULT Error) { (void) This; (void) pBufferContext, (void) Error; }
+
+#elif linux
+
+AUDIO_DEF bool audio_fmt_pcm_format(snd_pcm_format_t *format, Audio_Fmt fmt) {
+  switch(fmt) {
+  case AUDIO_FMT_S16: {
+    *format = SND_PCM_FORMAT_S16_LE;
+    return true;
+  } break;
+  default: {
+    return false;
+  } break;
+  }
+}
+
+AUDIO_DEF bool audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_rate) {
+  if(snd_pcm_open(&audio->alsa_snd_pcm, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
+    return false;
+  }
+
+  int bits_per_sample;
+  if(!audio_fmt_bits_per_sample(&bits_per_sample, fmt)) {
+    return false;
+  }
+  audio->sample_size = bits_per_sample * channels / 8;
+
+  snd_pcm_format_t snd_pcm_format;
+  if(!audio_fmt_pcm_format(&snd_pcm_format, fmt)) {
+    return false;
+  }
+  
+  if(snd_pcm_set_params(audio->alsa_snd_pcm,
+		        snd_pcm_format,
+			SND_PCM_ACCESS_RW_INTERLEAVED,
+			channels,
+			sample_rate,
+			0,
+			sample_rate / 4) < 0) {
+    return false;
+  }
+  snd_pcm_uframes_t buffer_size = 0;
+  snd_pcm_uframes_t period_size = 0;
+  if(snd_pcm_get_params(audio->alsa_snd_pcm, &buffer_size, &period_size) < 0) {
+    return false;
+  }
+  snd_pcm_prepare(audio->alsa_snd_pcm);
+
+  return true;  
+}
+
+AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, int samples) {
+
+  while(samples > 0) {
+    int ret = snd_pcm_writei(audio->alsa_snd_pcm, data, samples);
+    if(ret <= 0) {
+      snd_pcm_recover(audio->alsa_snd_pcm, ret, 1);
+      //snd_pcm_prepare(audio->device);
+    } else {
+      samples -= ret;
+    }
+  }
+
+}
+
+AUDIO_DEF void audio_free(Audio *audio) {
+  snd_pcm_drain(audio->alsa_snd_pcm);
+  snd_pcm_close(audio->alsa_snd_pcm);
+  audio->alsa_snd_pcm = NULL;
+}
+
+AUDIO_DEF void audio_block(Audio *audio) {
+
+  (void) audio;
+  // alsa by default blocks the execution, unlike xaudio2
+
+}
+
+#endif //_WIN32
+
+AUDIO_DEF bool audio_fmt_bits_per_sample(int *bits, Audio_Fmt fmt) {
+    switch(fmt) {
+    case AUDIO_FMT_S16: {
+	*bits = 16;
+	return true;
+    } break;
+    case AUDIO_FMT_FLT: {
+	*bits = 32;
+	return true;
+    } break;
+    default: {
+	return false;	
+    } break;
+    }
+}
+
+#endif //AUDIO_IMPLEMENTATION
+
+#endif //AUDIO_H
+#endif // AUDIO_DISABLE
+
+#ifdef DECODER_ENABLE
+
+#ifndef DECODER_H
+#define DECODER_H
+
+// TODO: implement seeking / seeking-api
+// TODO: Maybe add decoder_url_read / decoder_url_seek
+
+// win32
+//   mingw: -lavformat -lavcodec -lavutil -lswresample
+//   msvc : avformat.lib avcodec.lib avutil.lib swresample.lib
+
+// linux
+//   gcc  : -lavformat -lavcodec -lavutil -lswresample
+
+#include <stdbool.h>
+
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libavutil/channel_layout.h>
+#include <libavutil/opt.h>
+#include <libswresample/swresample.h>
+
+#ifndef DECODER_DEF
+#  define DECODER_DEF static inline
+#endif //DECODER_DEF
+
+typedef enum {
+  DECODER_FMT_NONE = 0,
+  DECODER_FMT_U8,
+  DECODER_FMT_S16,
+  DECODER_FMT_S32,
+  DECODER_FMT_FLT,
+  DECODER_FMT_DBL,
+  DECODER_FMT_U8P,
+  DECODER_FMT_S16P,
+  DECODER_FMT_S32P,
+  DECODER_FMT_FLTP,
+  DECODER_FMT_DBLP,
+}Decoder_Fmt;
+
+typedef struct Decoder Decoder;
+
+typedef int (*Decoder_Read)(void *opaque, uint8_t* buffer, int buffer_size);
+typedef int64_t (*Decoder_Seek)(void *opaque, int64_t offset, int whence);
+
+typedef struct{
+  const unsigned char *data;
+  uint64_t size;
+  uint64_t pos;
+}Decoder_Memory;
+
+struct Decoder{
+  AVIOContext *av_io_context;    
+  AVFormatContext *av_format_context;
+  AVCodecContext *av_codec_context;
+  SwrContext *swr_context;
+  int stream_index;
+
+  AVPacket *packet;
+  AVFrame *frame;
+  int64_t pts;
+
+  float volume;
+  float target_volume;
+
+  int samples;
+  int sample_size;
+
+  bool continue_receive;
+  bool continue_convert;
+};
+
+// Public
+DECODER_DEF bool decoder_slurp(Decoder_Read read,
+			       Decoder_Seek seek,
+			       void *opaque,
+			       Decoder_Fmt fmt,
+			       float volume,
+			       int *channels,
+			       int *sample_rate,
+			       unsigned char **samples,
+			       unsigned int *samples_count);
+
+DECODER_DEF bool decoder_slurp_file(const char *filepath,
+				    Decoder_Fmt fmt,
+				    float volume,
+				    int *channels,
+				    int *sample_rate,
+				    unsigned char **samples,
+				    unsigned int *samples_count);
+
+DECODER_DEF bool decoder_slurp_memory(const char *memory,
+				      size_t memory_len,
+				      Decoder_Fmt fmt,
+				      float volume,
+				      int *channels,
+				      int *sample_rate,
+				      unsigned char **samples,
+				      unsigned int *samples_count);
+
+DECODER_DEF bool decoder_init(Decoder *decoder,
+			      Decoder_Read read,
+			      Decoder_Seek seek,
+			      void *opaque,
+			      Decoder_Fmt fmt,
+			      float volume,
+			      int samples,
+			      int *channels,
+			      int *sample_rate);
+DECODER_DEF bool decoder_decode(Decoder *decoder, int *out_samples, unsigned char *out_buf);
+DECODER_DEF void decoder_free(Decoder *decoder);
+DECODER_DEF bool decoder_fmt_to_bits_per_sample(int *bits, Decoder_Fmt fmt);
+DECODER_DEF bool decoder_fmt_to_libav_fmt(enum AVSampleFormat *av_fmt, Decoder_Fmt fmt);
+
+// Protected
+DECODER_DEF int64_t decoder_file_seek(void *opaque, int64_t offset, int whence);
+DECODER_DEF int decoder_file_read(void *opaque, uint8_t *buf, int _buf_size);
+  
+DECODER_DEF int64_t decoder_memory_seek(void *opaque, int64_t offset, int whence);
+DECODER_DEF int decoder_memory_read(void *opaque, uint8_t *buf, int _buf_size);
+
+#ifdef DECODER_IMPLEMENTATION
+
+DECODER_DEF bool decoder_slurp_memory(const char *memory,
+				      size_t memory_len,
+				      Decoder_Fmt fmt,
+				      float volume,
+				      int *channels,
+				      int *sample_rate,
+				      unsigned char **out_samples,
+				      unsigned int *out_samples_count) {
+  Decoder_Memory mem = {
+    .data = (const unsigned char *) memory,
+    .pos = 0,
+    .size = memory_len,
+  };
+
+  return decoder_slurp(decoder_memory_read,
+		       decoder_memory_seek,
+		       &mem,
+		       fmt,
+		       volume,
+		       channels,
+		       sample_rate,
+		       out_samples,
+		       out_samples_count);
+
+}
+
+DECODER_DEF bool decoder_slurp_file(const char *filepath,
+				    Decoder_Fmt fmt,
+				    float volume,
+				    int *channels,
+				    int *sample_rate,
+				    unsigned char **out_samples,
+				    unsigned int *out_samples_count) {
+  FILE *f = fopen(filepath, "rb");
+  if(!f) {
+    return false;
+  }
+  
+  if(!decoder_slurp(decoder_file_read,
+		    decoder_file_seek,
+		    f,
+		    fmt,
+		    volume,
+		    channels,
+		    sample_rate,
+		    out_samples,
+		    out_samples_count)) {
+    fclose(f);
+    return false;
+  }
+
+  fclose(f);
+  return true;
+}
+
+DECODER_DEF bool decoder_slurp(Decoder_Read read,
+			       Decoder_Seek seek,
+			       void *opaque,
+			       Decoder_Fmt fmt,
+			       float volume,
+			       int *channels,
+			       int *sample_rate,
+			       unsigned char **out_samples,
+			       unsigned int *out_samples_count) {
+  Decoder decoder;
+  if(!decoder_init(&decoder, read, seek, opaque,
+		   fmt, 1152, volume, channels, sample_rate)) {
+    return false;
+  }
+
+  unsigned int samples_count = 0;
+  unsigned int samples_cap = 5 * (*sample_rate) * (*channels);
+  unsigned char *samples = malloc(samples_cap * decoder.sample_size);
+  if(!samples) {
+    decoder_free(&decoder);
+    return false;
+  }
+
+  unsigned char decoded_samples[1152 * 4];
+  int decoded_samples_count;
+  while(decoder_decode(&decoder, &decoded_samples_count, decoded_samples)) {
+
+    unsigned int new_samples_cap = samples_cap;
+    while(samples_count + decoded_samples_count > new_samples_cap) {
+      new_samples_cap *= 2;
+    }
+    if(new_samples_cap != samples_cap) {
+      samples_cap = new_samples_cap;
+      samples = realloc(samples, samples_cap * decoder.sample_size);
+      if(!samples) {
+	decoder_free(&decoder);
+	return false;
+      }
+    }
+    
+    memcpy(samples + samples_count * decoder.sample_size,
+	   decoded_samples,
+	   decoded_samples_count * decoder.sample_size);
+
+    samples_count += (unsigned int) decoded_samples_count;
+  }
+
+  *out_samples = samples;
+  *out_samples_count = samples_count;
+
+  decoder_free(&decoder);  
+  return true;
+}
+
+DECODER_DEF bool decoder_init(Decoder *decoder,
+			      Decoder_Read read,
+			      Decoder_Seek seek,
+			      void *opaque,
+			      Decoder_Fmt fmt,
+			      float volume,
+			      int samples,
+			      int *channels,
+			      int *sample_rate) {
+
+  decoder->av_io_context = NULL;
+  decoder->av_format_context = NULL;
+  decoder->av_codec_context = NULL;
+  decoder->swr_context = NULL;
+  decoder->packet = NULL;
+  decoder->frame = NULL;
+  decoder->target_volume = -1.f;
+  decoder->volume = volume;
+
+  decoder->samples = samples;
+  enum AVSampleFormat av_sample_format;
+  if(!decoder_fmt_to_libav_fmt(&av_sample_format, fmt)) {
+      return false;
+  }
+
+  decoder->av_io_context = avio_alloc_context(NULL, 0, 0, opaque, read, NULL, seek);
+  if(!decoder->av_io_context) {
+    decoder_free(decoder);
+    return false;
+  }
+
+  decoder->av_format_context = avformat_alloc_context();
+  if(!decoder->av_format_context) {
+    decoder_free(decoder);
+    return false;
+  }
+
+  decoder->av_format_context->pb = decoder->av_io_context;
+  decoder->av_format_context->flags = AVFMT_FLAG_CUSTOM_IO;
+  if (avformat_open_input(&decoder->av_format_context, "", NULL, NULL) != 0) {
+    decoder_free(decoder);
+    return false;
+  }
+
+  if(avformat_find_stream_info(decoder->av_format_context, NULL) < 0) {
+    decoder_free(decoder);
+    return false;
+  }
+
+  decoder->stream_index = -1;
+
+  const AVCodec *av_codec = NULL;
+  AVCodecParameters *av_codec_parameters = NULL;
+  for(size_t i=0;i<decoder->av_format_context->nb_streams;i++) {
+    av_codec_parameters = decoder->av_format_context->streams[i]->codecpar;
+    if(av_codec_parameters->codec_type == AVMEDIA_TYPE_AUDIO) {
+      decoder->stream_index = (int) i;
+      av_codec = avcodec_find_decoder(av_codec_parameters->codec_id);
+      if(!av_codec) {
+	decoder_free(decoder);
+	return false;
+      }
+      break;
+    }
+  }
+  if(av_codec == NULL) {
+    decoder_free(decoder);
+    return false;
+  }
+  
+  decoder->av_codec_context = avcodec_alloc_context3(av_codec);
+  if(!decoder) {
+    decoder_free(decoder);
+    return false;
+  }
+
+  if(avcodec_parameters_to_context(decoder->av_codec_context, av_codec_parameters) < 0) {
+    decoder_free(decoder);
+    return false;
+  }
+
+  *sample_rate = (int) decoder->av_codec_context->sample_rate;
+
+  if(avcodec_open2(decoder->av_codec_context, av_codec, NULL) < 0) {
+    decoder_free(decoder);
+    return false;
+  }
+  
+  decoder->swr_context = swr_alloc();
+  if(!decoder->swr_context) {
+    decoder_free(decoder);
+    return false;
+  }
+  
+  *channels = av_codec_parameters->ch_layout.nb_channels;
+
+  static const char *layout = "mono";
+  if(*channels == 2) {
+    layout = "stereo";
+  }
+
+  av_opt_set(decoder->swr_context, "in_channel_layout", layout, 0);
+  av_opt_set(decoder->swr_context, "out_channel_layout", layout, 0);
+  av_opt_set_int(decoder->swr_context, "in_sample_fmt", decoder->av_codec_context->sample_fmt, 0);
+  av_opt_set_int(decoder->swr_context, "in_sample_rate", decoder->av_codec_context->sample_rate, 0);
+  av_opt_set_int(decoder->swr_context, "out_sample_fmt", av_sample_format, 0);
+  av_opt_set_int(decoder->swr_context, "out_sample_rate", decoder->av_codec_context->sample_rate, 0);
+  av_opt_set_double(decoder->swr_context, "rmvol", volume, 0);
+  
+  decoder->target_volume = volume;
+  decoder->volume = volume;
+    
+  if(swr_init(decoder->swr_context) < 0) {
+    decoder_free(decoder);
+    return false;
+  }
+  //swr_set_quality(decoder->swr_context, 7);
+  //swr_set_resample_mode(decoder->swr_context, SWR_FILTER_TYPE_CUBIC);
+
+  int bits_per_sample;
+  if(!decoder_fmt_to_bits_per_sample(&bits_per_sample, fmt)) {
+    return false;
+  }
+  decoder->sample_size = *channels * bits_per_sample / 8;
+    
+  decoder->packet = av_packet_alloc();
+  if(!decoder->packet) {
+    decoder_free(decoder);
+    return false;
+  }
+  
+  decoder->frame = av_frame_alloc();
+  if(!decoder->frame) {
+    decoder_free(decoder);
+    return false;
+  }
+  
+  return true;    
+}
+
+DECODER_DEF void decoder_free(Decoder *decoder) {
+  
+  decoder->continue_receive = false;
+  decoder->continue_convert = false;
+
+  if(decoder->frame) {
+    av_frame_free(&decoder->frame);
+    decoder->frame = NULL;    
+  }
+  
+  if(decoder->packet) {
+    av_packet_free(&decoder->packet);
+    decoder->packet = NULL;    
+  }
+
+  if(decoder->swr_context) {
+    swr_free(&decoder->swr_context);
+    decoder->swr_context = NULL;    
+  }
+
+  if(decoder->av_codec_context) {
+    avcodec_close(decoder->av_codec_context);
+    avcodec_free_context(&decoder->av_codec_context);
+    decoder->av_codec_context = NULL;    
+  }
+
+  if(decoder->av_format_context) {
+    avformat_close_input(&decoder->av_format_context);
+    decoder->av_format_context = NULL;    
+  }
+
+  if(decoder->av_io_context) {
+    avio_context_free(&decoder->av_io_context);
+    decoder->av_io_context = NULL;
+  }
+}
+
+DECODER_DEF bool decoder_decode(Decoder *decoder, int *out_samples, unsigned char *buffer) {
+  *out_samples = 0;
+  if(!decoder->continue_convert) {
+    
+    if(!decoder->continue_receive) {
+      if(av_read_frame(decoder->av_format_context, decoder->packet) < 0) {
+	decoder->continue_receive = false;
+	decoder->continue_convert = false;
+	return false;
+      }
+      if(decoder->packet->stream_index != decoder->stream_index) {
+	decoder->continue_receive = false;
+	decoder->continue_convert = false;
+
+	av_packet_unref(decoder->packet);
+	return true;
+      }
+    
+      decoder->continue_receive = true;
+
+      if(avcodec_send_packet(decoder->av_codec_context, decoder->packet) < 0) {
+	//fprintf(stderr, "ERROR: fatal error in avcodec_send_packet\n");
+	//exit(1);
+	return false;
+      }
+    }  
+
+    if(avcodec_receive_frame(decoder->av_codec_context, decoder->frame) >= 0) {
+
+      if(decoder->target_volume != decoder->volume) {
+	av_opt_set_double(decoder->swr_context, "rmvol", decoder->target_volume, 0);
+	double volume;
+	swr_init(decoder->swr_context);
+	av_opt_get_double(decoder->swr_context, "rmvol", 0, &volume);
+	decoder->volume = (float) volume;
+      }
+
+      decoder->pts = decoder->frame->pts;
+      
+      *out_samples = swr_convert(decoder->swr_context, &buffer, decoder->samples,
+				 (const unsigned char **) (decoder->frame->data),
+				 decoder->frame->nb_samples);
+      
+      if(*out_samples > 0) {
+	decoder->continue_convert = true;
+      } else {
+	decoder->continue_convert = false;
+
+	av_frame_unref(decoder->frame);
+      }
+    } else {
+      *out_samples = 0;
+      
+      decoder->continue_convert = false;
+      decoder->continue_receive = false;
+
+      av_packet_unref(decoder->packet);
+    }
+
+    return true;
+  }
+      
+  *out_samples = swr_convert(decoder->swr_context, &buffer, decoder->samples, NULL, 0);
+
+  if(*out_samples > 0) {
+    decoder->continue_convert = true;
+  } else {
+    decoder->continue_convert = false;    
+    av_packet_unref(decoder->packet);
+  }
+
+  return true;
+
+}
+
+
+DECODER_DEF bool decoder_fmt_to_libav_fmt(enum AVSampleFormat *av_fmt, Decoder_Fmt fmt) {
+  switch(fmt) {
+  case DECODER_FMT_S16: {
+    *av_fmt = AV_SAMPLE_FMT_S16;
+    return true;
+  } break;
+  case DECODER_FMT_S32: {
+    *av_fmt = AV_SAMPLE_FMT_S32;
+    return true;
+  } break;
+  case DECODER_FMT_FLT: {
+    *av_fmt = AV_SAMPLE_FMT_FLT;
+    return true;
+  } break;
+  default: {
+    return false;
+  } 
+  }
+}
+
+DECODER_DEF bool decoder_fmt_to_bits_per_sample(int *bits, Decoder_Fmt fmt) {
+  switch(fmt) {
+  case DECODER_FMT_S16: {
+    *bits = 16;
+    return true;
+  } break;
+  case DECODER_FMT_S32: {
+    *bits = 32;
+    return true;
+  } break;
+  case DECODER_FMT_FLT: {
+    *bits = 32;
+    return true;
+  } break;
+  default: {
+    return false;
+  } 
+  }  
+}
+
+DECODER_DEF int decoder_memory_read(void *opaque, uint8_t *buf, int _buf_size) {
+  Decoder_Memory *memory = (Decoder_Memory *) opaque;
+
+  size_t buf_size = (size_t) _buf_size;
+
+  if (buf_size > memory->size - memory->pos) {
+    buf_size = memory->size - memory->pos;
+  }
+
+  if (buf_size <= 0) {
+    return AVERROR_EOF;
+  }
+
+  memcpy(buf, memory->data + memory->pos, buf_size);
+  memory->pos += buf_size;
+
+  return (int )buf_size;
+}
+
+DECODER_DEF int64_t decoder_memory_seek(void *opaque, int64_t offset, int whence) {
+
+  Decoder_Memory *memory = (Decoder_Memory *) opaque;
+
+  switch (whence) {
+  case SEEK_SET:
+    memory->pos = offset;
+    break;
+  case SEEK_CUR:
+    memory->pos += offset;
+    break;
+  case SEEK_END:
+    memory->pos = memory->size + offset;
+    break;
+  case AVSEEK_SIZE:
+    return (int64_t) memory->size;
+  default:
+    return AVERROR_INVALIDDATA;
+  }
+
+  if (memory->pos > memory->size) {
+    return AVERROR(EIO);
+  }
+    
+  return memory->pos;
+}
+
+DECODER_DEF int decoder_file_read(void *opaque, uint8_t *buf, int buf_size) {
+  FILE *f = (FILE *)opaque;
+
+  size_t bytes_read = fread(buf, 1, buf_size, f);
+
+  if (bytes_read == 0) {
+    if(feof(f)) return AVERROR_EOF;
+    else return AVERROR(errno);
+  }
+  
+  return (int) bytes_read;
+}
+
+DECODER_DEF int64_t decoder_file_seek(void *opaque, int64_t offset, int whence) {
+  
+  FILE *f = (FILE *)opaque;
+  
+  if (whence != SEEK_SET && whence != SEEK_CUR && whence != SEEK_END) {
+    return AVERROR_INVALIDDATA;
+  }
+
+  if(fseek(f, (long) offset, whence)) {
+    return AVERROR(errno);
+  }
+
+  return ftell(f);
+}
+
+#endif //DECODER_IMPLEMENTATION
+
+#endif //DECODER_H
+#endif // DECODER_DISABLE
+
+#ifdef EBML_ENABLE
+
+#ifndef EBML_H
+#define EBML_H
+
+//https://datatracker.ietf.org/doc/rfc8794/
+//https://www.matroska.org/technical/elements.html
+
+#ifndef TYPES_H
+#define TYPES_H
+
+#include <stdint.h>
+#include <stdbool.h>
+
+typedef uint8_t u8;
+typedef char s8; // because of mingw warning not 'int8_t'
+typedef uint16_t u16;
+typedef int16_t s16;
+typedef uint32_t u32;
+typedef int32_t s32;
+typedef uint64_t u64;
+typedef int64_t s64;
+
+typedef float f32;
+typedef double f64;
+
+#define return_defer(n) do{			\
+    result = (n);				\
+    goto defer;					\
+  }while(0)
+
+#define errorf(...) do{						\
+    fflush(stdout);						\
+    fprintf(stderr, "%s:%d:ERROR: ", __FILE__, __LINE__);	\
+    fprintf(stderr,  __VA_ARGS__ );				\
+    fprintf(stderr, "\n");					\
+    fflush(stderr);						\
+  }while(0)
+
+#define panicf(...) do{						\
+    errorf(__VA_ARGS__);					\
+    exit(1);							\
+  }while(0)
+
+#endif // TYPES_H
+
+#ifndef EBML_DEF
+#  define EBML_DEF static inline
+#endif // EBML_DEF
+
+#ifndef EBML_LOG
+#  ifdef EBML_QUIET
+#    define EBML_LOG(...)
+#  else
+#    include <stdio.h>
+#    define EBML_LOG(...) fprintf(stderr, "EBML_LOG: "); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n")
+#  endif // EBML_QUIET
+#endif // EBML_QUIET
+
+typedef enum{
+  EBML_TYPE_NONE = 0,
+  EBML_TYPE_MASTER,
+  EBML_TYPE_UINT,
+  EBML_TYPE_STRING,
+}Ebml_Type;
+
+#define EBML_TABLE				\
+  EBML_ENTRY(0x1A45DFA3, MASTER, EBML)		\
+  EBML_ENTRY(0x4286, UINT, EBMLVersion)		\
+  EBML_ENTRY(0x42F7, UINT, EBMLReadVersion)	\
+  EBML_ENTRY(0x42f2, UINT, EBMLMaxIDLength)	\
+  EBML_ENTRY(0x42f3, UINT, EBMLMaxSizeLength)	\
+  EBML_ENTRY(0x4282, STRING, DocType)		\
+  EBML_ENTRY(0x4287, UINT, DocTypeVersion)	\
+  EBML_ENTRY(0x4285, UINT, DocTypeReadVersion)	\
+
+typedef enum {
+  EBML_ID_NONE = 0,
+  
+#define EBML_ENTRY(id, type, name) EBML_ID_##name,
+  EBML_TABLE
+#undef EBML_ENTRY
+  
+}Ebml_Id;
+
+typedef struct{
+  Ebml_Type type;
+  Ebml_Id id;
+}Ebml_Elem;
+
+typedef struct{
+  u8 *data;
+  u64 len;
+}Ebml;
+
+#define ebml_from(d, l) (Ebml) {(d), (l)}
+
+EBML_DEF bool ebml_next(Ebml *e, u64 *size, Ebml_Elem *elem);
+EBML_DEF const char *ebml_id_name(Ebml_Id id);
+EBML_DEF const char *ebml_type_name(Ebml_Type type);
+
+#ifdef EBML_IMPLEMENTATION
+
+EBML_DEF bool ebml_next(Ebml *e, u64 *size, Ebml_Elem *elem) {
+
+  // READ id
+  if(e->len == 0) {
+    return false;
+  }
+
+  u8 b = *e->data;
+
+  u8 bit = 1 << 7;
+  u8 i=1;
+  for(;i<=8;i++) {
+    if(b & bit) break;
+    bit >>= 1;
+  }
+
+  if(e->len < i) {
+    return false;
+  }
+  
+  u64 id = *e->data;
+  for(u8 j=1;j<i;j++) {
+    id <<= 8;
+    id += e->data[j];
+  }
+  e->data += i;
+  e->len  -= i;
+
+  switch(id) {
+#define EBML_ENTRY(ebml_id, ebml_type, ebml_name)	\
+    case (ebml_id): {					\
+      elem->id = (EBML_ID_##ebml_name);			\
+      elem->type = (EBML_TYPE_##ebml_type);		\
+    } break;
+    EBML_TABLE
+#undef EBML_ENTRY
+  default: {
+      EBML_LOG("Unknown id: 0x%llx", id);
+      return false;
+    } break;
+  }
+
+  //READ size
+  if(e->len == 0) {
+    return false;
+  }
+
+  b = *e->data;
+
+  bit = 1 << 7;
+  i=1;
+  for(;i<=8;i++) {
+    if(b & bit) break;
+    bit >>= 1;
+  }
+
+  if(e->len < i) {
+    return false;
+  }
+  
+  *size = *e->data & ~bit;
+  for(u8 j=1;j<i;j++) {
+    *size <<= 8;
+    *size += e->data[j];
+  }
+  e->data += i;
+  e->len  -= i;
+
+  // LOOKUP id
+
+  e->data += *size;
+  e->len  -= *size;
+  
+  return true;
+}
+
+EBML_DEF const char *ebml_id_name(Ebml_Id id) {
+  switch(id) {
+#define EBML_ENTRY(ebml_id, ebml_type, ebml_name) case EBML_ID_##ebml_name: return #ebml_name;
+    EBML_TABLE
+#undef EBML_ENTRY
+  }
+
+  return NULL;
+}
+
+EBML_DEF const char *ebml_type_name(Ebml_Type type) {
+  switch(type) {
+  case EBML_TYPE_NONE: return "NONE";
+  case EBML_TYPE_MASTER: return "Master Element";
+  case EBML_TYPE_UINT: return "Unsigned Integer";
+  case EBML_TYPE_STRING: return "String";
+  }
+
+  return NULL;
+}
+
+#endif // EBML_IMPLEMENTATION
+
+#endif // EBML_H
+#endif // EBML_DISABLE
+
+#ifdef HTTP_ENABLE
+
+#ifndef HTTP_H
+#define HTTP_H
+
+#ifndef HTTP_DEF
+#  define HTTP_DEF static inline
+#endif // HTTP_DEF
+
+#ifndef HTTP_BUFFER_SIZE
+#  define HTTP_BUFFER_SIZE 8192
+#endif //HTTP_BUFFER_SIZE
+
+#ifndef HTTP_ENTRY_SIZE
+#  define HTTP_ENTRY_SIZE 2048
+#endif // HTTP_ENTRY_SIZE
+
+#ifndef HTTP_LOG
+#  ifdef HTTP_QUIET
+#    define HTTP_LOG(...)
+#  else
+#    include <stdio.h>
+#    define HTTP_LOG(...) fprintf(stderr, "HTTP_LOG: "); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n")
+#  endif // HTTP_QUIET
+#endif // HTTP_LOG
+
+#define HTTP_PORT 80
+#define HTTPS_PORT 443
+
+#include <stdio.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdarg.h>
+
+#include <assert.h>
+
+#ifdef _WIN32
+#  include <ws2tcpip.h>
+#  include <winsock2.h>
+#  include <windows.h>
+#elif linux
+#  include <sys/socket.h>
+#  include <netinet/in.h>
+#  include <netdb.h>
+#  include <arpa/inet.h>
+#  include <unistd.h>
+#endif
+
+#ifdef HTTP_OPEN_SSL
+#  include <openssl/ssl.h>
+#  include <openssl/err.h>
+#endif //HTTP_OPEN_SSL
+
+typedef struct{
+#ifdef _WIN32
+  SOCKET socket;
+#else
+  int socket;
+#endif
+
+#ifdef HTTP_OPEN_SSL
+  SSL *conn;  
+#endif // HTTP_OPEN_SSL
+  
+  const char *hostname;
+}Http;
+
+HTTP_DEF bool http_init(const char* hostname, uint16_t port, bool use_ssl, Http *http);
+
+HTTP_DEF bool http_socket_write(const char *data, size_t size, void *http);
+HTTP_DEF bool http_socket_read(char *data, size_t size, void *http, size_t *read);
+
+HTTP_DEF bool http_socket_connect_plain(Http *http, const char *hostname, uint16_t port);
+HTTP_DEF bool http_socket_write_plain(const char *data, size_t size, void *_http);
+HTTP_DEF bool http_socket_read_plain(char *buffer, size_t buffer_size, void *_http, size_t *read);
+
+HTTP_DEF void http_free(Http *http);
+
+typedef struct{
+  Http *http;
+
+  // Buffer read's
+  char buffer[HTTP_BUFFER_SIZE];
+  size_t buffer_pos, buffer_size;
+
+  // Parsing
+  char key[HTTP_ENTRY_SIZE];
+  size_t key_len;
+  char value[HTTP_ENTRY_SIZE];
+  size_t value_len;
+  int body, state, state2, pair;
+  size_t content_read;
+
+  // Info
+  int response_code;
+  size_t content_length;
+  
+}Http_Request;
+
+typedef struct{
+  char *key, *value;
+  size_t key_len, value_len;
+}Http_Header;
+
+HTTP_DEF bool http_request_from(Http *http, const char *route, const char *method,
+				const char *headers,
+				const unsigned char *body, size_t body_len,
+				Http_Request *request);
+HTTP_DEF bool http_next_header(Http_Request *r, Http_Header *entry);
+HTTP_DEF bool http_next_body(Http_Request *r, char **data, size_t *data_len);
+
+HTTP_DEF bool http_maybe_init_external_libs();
+
+HTTP_DEF bool http_parse_u64(char *buffer, size_t buffer_len, uint64_t *out);
+HTTP_DEF bool http_parse_hex_u64(char *buffer, size_t buffer_len, uint64_t *out);
+HTTP_DEF bool http_header_eq(const char *key, size_t key_len, const char *value, size_t value_len);
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+typedef bool (*Http_Sendf_Callback)(const char *data, size_t size, void *userdata);
+
+typedef struct{
+  Http_Sendf_Callback send_callback;
+  char *buffer;
+  size_t buffer_cap;
+  void *userdata;
+  bool last;
+}Http_Sendf_Context;
+
+HTTP_DEF bool http_sendf(Http_Sendf_Callback send_callback, void *userdata,
+			 char *buffer, size_t buffer_cap, const char *format, ...);
+HTTP_DEF bool http_sendf_impl(Http_Sendf_Callback send_callback, void *userdata,
+			      char *buffer, size_t buffer_cap, const char *format, va_list args);
+HTTP_DEF size_t http_sendf_impl_send(Http_Sendf_Context *context, size_t *buffer_size, const char *cstr, size_t cstr_len);
+HTTP_DEF size_t http_sendf_impl_copy(Http_Sendf_Context *context, size_t buffer_size,
+				     const char *cstr, size_t cstr_len, size_t *cstr_off);
+
+#ifdef HTTP_IMPLEMENTATION
+
+#ifdef _WIN32
+#  define HTTP_LOG_OS(method) char msg[1024]; FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR) &msg, sizeof(msg), NULL); HTTP_LOG((method)"-error: (%d) %s", GetLastError(), msg);
+#else
+#  define HTTP_LOG_OS(method) HTTP_LOG((method)"-error: (%d) %s", errno, strerr(errno))
+#endif // _WIN32
+
+#ifdef _WIN32
+static bool http_global_wsa_startup = false;
+#endif //_WIN32
+
+#ifdef HTTP_OPEN_SSL
+static SSL_CTX *http_global_ssl_context = NULL;
+#endif //HTTP_OPEN_SSL
+
+HTTP_DEF bool http_init(const char* hostname, uint16_t port, bool use_ssl, Http *h) {
+
+  size_t hostname_len = strlen(hostname);
+  h->hostname = malloc(hostname_len + 1);
+  if(!h->hostname) {
+    return false;
+  }
+  memcpy((char *) h->hostname, hostname, hostname_len + 1);
+
+  if(!http_maybe_init_external_libs()) {
+    return false;
+  }
+
+#ifdef _WIN32
+  h->socket = WSASocketW(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, 0);
+  if( h->socket == INVALID_SOCKET ) {
+    HTTP_LOG("Failed to initialize socket");
+    return false;
+  }
+#elif linux
+  h->socket = socket(AF_INET, SOCK_STREAM, 0);
+  if( h->socket == -1) {
+    HTTP_LOG("Failed to initialize socket");
+    return false;
+  }
+#else
+  HTTP_LOG("Unsupported platform. Implement: http_init");
+  
+  return false;
+#endif // _WIN32
+
+  if(!http_socket_connect_plain(h, hostname, port)) {
+    HTTP_LOG("Can not connect to '%s:%u'", hostname, port);
+    return false;
+  }
+
+#ifdef HTTP_OPEN_SSL    
+  h->conn = NULL;
+  
+  if(use_ssl) {
+    h->conn = SSL_new(http_global_ssl_context);
+    if(!h->conn) {
+      HTTP_LOG("Fatal error using OPEN_SSL");
+      return false;
+    }
+    SSL_set_fd(h->conn, (int) h->socket); // TODO: maybe check this cast
+
+    SSL_set_connect_state(h->conn);
+    SSL_set_tlsext_host_name(h->conn, hostname);
+    if(SSL_connect(h->conn) != 1) {
+      HTTP_LOG("Can not connect to '%s:%u' via SSL (OPEN_SSL)", hostname, port);
+      return false;
+    }
+  }
+#else
+  if(use_ssl) {
+    HTTP_LOG("Neither HTTP_OPEN_SSL nor HTTP_WIN32_SSL is defined. Define either to be able to use SSL.");
+    return false;    
+  }
+#endif // HTTP_OPEN_SSL
+
+  return true;
+}
+
+HTTP_DEF bool http_maybe_init_external_libs() {
+#ifdef _WIN32
+  if(!http_global_wsa_startup) {
+    
+    WSADATA wsaData;
+    if(WSAStartup(MAKEWORD(2,2), &wsaData) != 0) {
+      HTTP_LOG("Failed to initialize WSA (ws2_32.lib)\n");
+      return false;
+    }
+    
+    http_global_wsa_startup = true;
+  }
+#endif //_WIN32
+
+#ifdef HTTP_OPEN_SSL
+  if(!http_global_ssl_context) {
+    SSL_library_init();
+    OpenSSL_add_all_algorithms();
+    http_global_ssl_context = SSL_CTX_new(TLS_client_method());
+    if(!http_global_ssl_context) {
+      HTTP_LOG("Failed to initialize SSL (openssl.lib, crypto.lib)\n");
+      return false;
+    }    
+  }
+#endif //HTTP_OPEN_SSL
+
+  return true;
+}
+
+HTTP_DEF bool http_socket_connect_plain(Http *http, const char *hostname, uint16_t port) {
+
+#ifdef _WIN32
+  struct addrinfo hints;
+  struct addrinfo* result = NULL;
+
+  ZeroMemory(&hints, sizeof(hints));
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_protocol = IPPROTO_TCP;
+
+  char port_cstr[6];
+  snprintf(port_cstr, sizeof(port_cstr), "%u", port);
+
+  if(getaddrinfo(hostname, port_cstr, &hints, &result) != 0) {
+    HTTP_LOG("getaddrinfo failed");
+    freeaddrinfo(result);
+    return false;
+  }
+
+  bool out = true;
+  if(connect(http->socket, result->ai_addr, (int) result->ai_addrlen) != 0) {
+    HTTP_LOG("connect failed: %ld", GetLastError());
+    out = false;
+  }
+  
+  freeaddrinfo(result);
+
+  return out;
+#elif linux
+  struct sockaddr_in addr = {0};
+
+  struct hostent *hostent = gethostbyname(hostname);
+  if(!hostent) {
+    return false;
+  }
+
+  in_addr_t in_addr = inet_addr(inet_ntoa(*(struct in_addr*)*(hostent->h_addr_list)));
+  if(in_addr == (in_addr_t) -1) {
+    return false;
+  }
+  addr.sin_addr.s_addr = in_addr;
+
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons((u_short) port);
+  if(connect(http->socket, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+    return false;
+  }
+
+  return true;
+#else
+
+  HTTP_LOG("Unsupported platform. Implement: http_socket_connect_plain");
+  
+  (void) http;
+  (void) hostname;
+  (void) port;
+  return false;
+#endif
+}
+
+HTTP_DEF void http_free(Http *http) {
+
+#ifdef HTTP_OPEN_SSL
+  if(http->conn) {
+    SSL_set_shutdown(http->conn, SSL_RECEIVED_SHUTDOWN | SSL_SENT_SHUTDOWN);
+    SSL_shutdown(http->conn);
+    SSL_free(http->conn);
+  }
+#endif // HTTP_OPEN_SSL
+  
+#ifdef _WIN32
+  closesocket(http->socket);
+  http->socket = INVALID_SOCKET;
+#elif linux
+  close(http->socket);
+#endif
+
+  free((char *) http->hostname);
+}
+
+HTTP_DEF bool http_socket_write(const char *data, size_t size, void *_http) {
+  
+#ifdef HTTP_OPEN_SSL
+  Http *http = (Http *) _http;
+
+  if(!http->conn)
+    return http_socket_write_plain(data, size, http);
+
+  // This loop is needed, for the case that SSL_write returns the error: SSL_ERROR_WANT_WRITE.
+  // If the write fails, because of any error, but we should continue trying to write.
+  
+  do{
+    int ret = SSL_write(http->conn, data, (int) size);
+    if(ret <= 0) {
+
+      int error = SSL_get_error(http->conn, ret);
+
+      if( error == SSL_ERROR_ZERO_RETURN ) {
+
+	// connection was closed
+	return false;
+      } else if( error == SSL_ERROR_WANT_READ ) {
+
+	// try again calling SSL_write
+	continue;
+      } else {
+
+	// ssl_write error
+	// TODO: maybe handle other errors
+	return false;	
+      }
+    } else {
+
+      // ssl_write success
+      return true;
+    } 
+
+  }while(1);
+#else
+  (void) data;
+  (void) size;
+  (void) _http;
+
+  return false;
+#endif // HTTP_OPEN_SSL  
+}
+
+HTTP_DEF bool http_socket_write_plain(const char *data, size_t size, void *_http) {
+
+  Http *http = (Http *) _http;
+
+#ifdef _WIN32
+  int ret = send(http->socket, data, (int) size, 0);
+  if(ret == SOCKET_ERROR) {
+    
+    // send error    
+    return false;
+  } else if(ret == 0) {
+    
+    // connection was closed
+    return false;
+  } else {
+    
+    // send success
+    return true;
+  }
+#elif linux
+
+  int ret = send(http->socket, data, (int) size, 0);
+  if(ret < 0) {
+    // TODO: check if this is the right error
+    if(errno == ECONNRESET) {
+
+      // connection was closed
+      return false;
+    } else {
+
+      // send error
+      return false;
+    }      
+  } else {
+
+    // send success
+    return true;
+  }
+#else
+  return false;
+#endif 
+}
+
+HTTP_DEF bool http_socket_read(char *buffer, size_t buffer_size, void *_http, size_t *read) {
+
+#ifdef HTTP_OPEN_SSL
+  Http *http = (Http *) _http;
+
+  if(!http->conn)
+    return http_socket_read_plain(buffer, buffer_size, http, read);
+
+  *read = 0;
+
+  // This loop is needed, for the case that SSL_read returns the error: SSL_ERROR_WANT_READ.
+  // In this case we should not close the connection which would be indicated by returning
+  // a read of 0. And we should not return false, because there is still data that wants to
+  // be read.
+  do{
+
+    int ret = SSL_read(http->conn, buffer, (int) buffer_size);
+    if(ret < 0) {
+      int error = SSL_get_error(http->conn, ret);
+
+      if( error == SSL_ERROR_ZERO_RETURN ) {
+
+	// connection was closed
+	*read = 0;
+	return false;
+      } else if( error == SSL_ERROR_WANT_READ ) {
+
+	// try again calling SSL_read
+	continue;
+      } else {
+
+	// ssl_read error
+	// TODO: maybe handle other errors
+	return false;	
+      }
+    } else {
+
+      // ssl_read success
+      *read = (size_t) ret;
+      return true;
+    }
+
+    break;
+  }while(1);
+#else
+  (void) buffer;
+  (void) buffer_size;
+  (void) _http;
+  (void) read;
+
+  return false;
+#endif // HTTP_OPEN_SSL
+
+}
+
+HTTP_DEF bool http_socket_read_plain(char *buffer, size_t buffer_size, void *_http, size_t *read) {
+
+  Http *http = (Http *) _http;
+
+#ifdef _WIN32
+  int ret = recv(http->socket, buffer, (int) buffer_size, 0);
+  if(ret == SOCKET_ERROR) {
+    // recv error
+    return false;
+  } else if(ret == 0) {
+
+    // connection was closed
+    *read = 0;
+    return true;
+  } else {
+
+    // recv success
+    *read = (size_t) ret;
+    return true;
+  }
+#elif linux
+
+  int ret = recv(http->socket, buffer, (int) buffer_size, 0);
+  if(ret < 0) {
+
+    // recv error
+    return false;
+  } else if(ret == 0) {
+
+    // connection was closed
+    *read = 0;
+    return true;
+  } else {
+
+    *read = (size_t) ret; 
+    return true;
+  }
+#else
+  return false;
+#endif 
+}
+
+#define HTTP_REQUEST_STATE_DONE -2
+#define HTTP_REQUEST_STATE_ERROR -1
+#define HTTP_REQUEST_STATE_IDLE 0
+#define HTTP_REQUEST_STATE_R    1
+#define HTTP_REQUEST_STATE_RN   2
+#define HTTP_REQUEST_STATE_RNR  3
+#define HTTP_REQUEST_STATE_BODY 4
+
+#define HTTP_REQUEST_PAIR_INVALID 0
+#define HTTP_REQUEST_PAIR_KEY 1
+#define HTTP_REQUEST_PAIR_VALUE 2
+
+#define HTTP_REQUEST_BODY_NONE 0
+#define HTTP_REQUEST_BODY_CONTENT_LEN 1
+#define HTTP_REQUEST_BODY_CHUNKED 2
+#define HTTP_REQUEST_BODY_INFO 3
+
+#ifdef HTTP_OPEN_SSL
+#  define HTTP_WRITE_FUNC http_socket_write
+#  define HTTP_READ_FUNC http_socket_read
+#else
+#  define HTTP_WRITE_FUNC http_socket_write_plain
+#  define HTTP_READ_FUNC http_socket_read_plain
+#endif // HTTP_OPEN_SSL
+
+
+HTTP_DEF bool http_request_from(Http *http, const char *route, const char *method,
+				const char *headers,
+				const unsigned char *body, size_t body_len,
+				Http_Request *r) {
+
+  r->http = http;
+  r->buffer_size = 0;
+  r->body = HTTP_REQUEST_BODY_NONE;
+  r->state = HTTP_REQUEST_STATE_IDLE;
+  r->state2 = HTTP_REQUEST_STATE_IDLE;
+  r->pair = HTTP_REQUEST_PAIR_KEY;
+  r->key_len = 0;
+  r->value_len = 0;
+  
+  if(body_len > 0) {
+
+    int len = (int) body_len;
+    
+    if(!http_sendf(HTTP_WRITE_FUNC, http, r->buffer, sizeof(r->buffer),
+		   "%s %s HTTP/1.1\r\n"
+		   "Host: %s\r\n"
+		   "%s"
+		   "Content-Length: %d\r\n"
+		   "\r\n"
+		   "%.*s", method, route, http->hostname, headers ? headers : "", len , len, (char *) body)) {
+      HTTP_LOG("Failed to send http-request");
+      return false;
+    }
+    
+  } else {
+    if(!http_sendf(HTTP_WRITE_FUNC, http, r->buffer, sizeof(r->buffer),
+		   "%s %s HTTP/1.1\r\n"
+		   "Host: %s\r\n"
+		   "%s"
+		   "\r\n", method, route, http->hostname, headers ? headers : "")) {
+      HTTP_LOG("Failed to send http-request");
+      return false;
+    }    
+  }
+
+  if(!HTTP_READ_FUNC(r->buffer, sizeof(r->buffer), r->http, &r->buffer_size)) {
+    return false;
+  }
+  if(r->buffer_size == 0) {
+    return false;
+  }
+  r->buffer_pos = 0;
+  
+  return true;
+}
+
+HTTP_DEF bool http_next_header(Http_Request *r, Http_Header *header) {
+
+ start:
+  if(r->state == HTTP_REQUEST_STATE_ERROR ||
+     r->state == HTTP_REQUEST_STATE_DONE) {
+    return false;
+  }
+
+  if(r->buffer_size == 0) {
+    if(!HTTP_READ_FUNC(r->buffer, sizeof(r->buffer), r->http, &r->buffer_size)) {
+      return false;
+    }
+
+    if(r->buffer_size == 0) {
+      return false;
+    }
+    r->buffer_pos = 0;
+  }
+
+  for(size_t i=0;i<r->buffer_size;i++) {
+    int state_before = r->state;
+
+    char c = r->buffer[r->buffer_pos + i];
+    
+    if(c == '\r') {
+      if(r->state == HTTP_REQUEST_STATE_IDLE) r->state = HTTP_REQUEST_STATE_R;
+      else if(r->state == HTTP_REQUEST_STATE_R) r->state = HTTP_REQUEST_STATE_IDLE;
+      else if(r->state == HTTP_REQUEST_STATE_RN) r->state = HTTP_REQUEST_STATE_RNR;
+      else if(r->state == HTTP_REQUEST_STATE_RNR) r->state = HTTP_REQUEST_STATE_IDLE;
+      else if(r->state == HTTP_REQUEST_STATE_BODY) r->state = HTTP_REQUEST_STATE_BODY;
+    } else if(c == '\n') {
+      if(r->state == HTTP_REQUEST_STATE_IDLE) r->state = HTTP_REQUEST_STATE_IDLE;
+      else if(r->state == HTTP_REQUEST_STATE_R) r->state = HTTP_REQUEST_STATE_RN;
+      else if(r->state == HTTP_REQUEST_STATE_RN) r->state = HTTP_REQUEST_STATE_IDLE;
+      else if(r->state == HTTP_REQUEST_STATE_RNR) r->state = HTTP_REQUEST_STATE_BODY;
+      else if(r->state == HTTP_REQUEST_STATE_BODY) r->state = HTTP_REQUEST_STATE_BODY;
+    } else {
+      if(r->state == HTTP_REQUEST_STATE_BODY) r->state = HTTP_REQUEST_STATE_BODY;
+      else r->state = HTTP_REQUEST_STATE_IDLE;
+    }
+
+    if(r->state == HTTP_REQUEST_STATE_IDLE && state_before == HTTP_REQUEST_STATE_RN) {
+      r->pair = HTTP_REQUEST_PAIR_KEY;
+    }
+
+    if(r->pair == HTTP_REQUEST_PAIR_KEY) {
+      if(c == ':') {
+	r->pair = HTTP_REQUEST_PAIR_VALUE;
+      } else if(c == '\r') {
+
+	// 'HTTP/1.1 '
+	static char http1_prefix[] = "HTTP";
+	static size_t http1_prefix_len = sizeof(http1_prefix) - 1;
+
+	if(r->key_len < http1_prefix_len ||
+	   memcmp(http1_prefix, r->key, http1_prefix_len) != 0) {
+	  HTTP_LOG("http1-prefix is not present: '%.*s'", (int) r->key_len, r->key);
+	  r->state = HTTP_REQUEST_STATE_ERROR;
+	  return false;
+	}
+
+	// '200'
+	if(r->key_len < http1_prefix_len + 5 + 3) {
+	  HTTP_LOG("http1 responseCode is not present");
+	  r->state = HTTP_REQUEST_STATE_ERROR;
+	  return false;
+	}
+
+        size_t out;
+	if(!http_parse_u64(r->key + 5 + http1_prefix_len, 3, &out)) {
+	  HTTP_LOG("Failed to parse: '%.*s'", (int) 3, r->key + http1_prefix_len + 5);
+	  r->state = HTTP_REQUEST_STATE_ERROR;
+	  return false;
+	}
+	r->response_code = (int) out;	
+	
+      } else if(c == '\n') {
+	r->key_len = 0;
+      } else {
+	assert(r->key_len < sizeof(r->key) - 1);
+	r->key[r->key_len++] = c;
+      }
+    } else if(r->pair == HTTP_REQUEST_PAIR_VALUE) {
+      if(c == '\r') {
+
+	static char content_length_cstr[] = "content-length";
+	static size_t content_length_cstr_len = sizeof(content_length_cstr) - 1;
+
+	if(http_header_eq(r->key, r->key_len, content_length_cstr, content_length_cstr_len)) {
+
+	  size_t len = r->value_len - 1;
+	  if(!http_parse_u64(r->value, len, &r->content_length)) {
+	    HTTP_LOG("Failed to parse: '%.*s'", (int) len, r->value);
+	    r->state = HTTP_REQUEST_STATE_ERROR;
+	    return false;
+	  }
+
+	  if(r->body != HTTP_REQUEST_BODY_NONE) {
+	    HTTP_LOG("Http-Body was already specified");
+	    r->state = HTTP_REQUEST_STATE_ERROR;
+	    return false;
+ 
+	  }
+	  r->body = HTTP_REQUEST_BODY_CONTENT_LEN;
+	  r->content_read = 0;
+	}
+
+	static char chunked_encoding[] = "transfer-encoding";
+	static size_t chunked_encoding_len = sizeof(chunked_encoding) - 1;
+	static char chunked[] = "chunked";
+	static size_t chunked_len = sizeof(chunked) - 1;
+	
+	if(http_header_eq(r->key, r->key_len, chunked_encoding, chunked_encoding_len) &&
+	   http_header_eq(r->value, r->value_len - 1, chunked, chunked_len)) {
+	  if(r->body != HTTP_REQUEST_BODY_NONE) {
+	    HTTP_LOG("Http-Body was already specified");
+	    r->state = HTTP_REQUEST_STATE_ERROR;
+	    return false;
+ 
+	  }
+	  r->body = HTTP_REQUEST_BODY_CHUNKED;
+	  r->content_length = 0;
+	  r->content_read = 0;
+	}
+
+        r->key[r->key_len] = 0;
+	r->value[r->value_len - 1] = 0;
+
+	header->key = r->key;
+	header->key_len = r->key_len;
+	header->value = r->value;
+	header->value_len = r->value_len - 1;
+	
+	r->pair = HTTP_REQUEST_PAIR_INVALID;
+	r->value_len = 0;
+	r->key_len = 0;
+
+	r->buffer_pos  += i - 1;
+	r->buffer_size -= i - 1;
+        return true;
+      } else {
+	assert(r->value_len < sizeof(r->value) - 1);
+	if(r->value_len == 0) r->value_len++;
+	else r->value[r->value_len++ - 1] = c;
+      }
+    }
+
+    if(r->state == HTTP_REQUEST_STATE_BODY) {
+      r->buffer_pos  += i + 1;
+      r->buffer_size -= i + 1;
+      return false;
+    }
+
+  }
+
+  r->buffer_size = 0;
+  goto start;
+}
+
+HTTP_DEF bool http_next_body(Http_Request *r, char **data, size_t *data_len) {
+  
+  // Maybe parse Headers
+  if(r->state != HTTP_REQUEST_STATE_BODY) {
+    Http_Header header;
+    while(http_next_header(r, &header)) ;
+  }
+
+ start:
+
+  // Mabye exit
+  if(r->state == HTTP_REQUEST_STATE_ERROR ||
+     r->state == HTTP_REQUEST_STATE_DONE) {
+    return false;
+  }
+ 
+  // Read 
+  if(r->buffer_size == 0) {
+    if(!HTTP_READ_FUNC(r->buffer, sizeof(r->buffer), r->http, &r->buffer_size)) {
+      return false;
+    }
+
+    if(r->buffer_size == 0) {
+      return false;
+    }
+    r->buffer_pos = 0;
+  }
+
+  // Consume
+  if(r->body == HTTP_REQUEST_BODY_CONTENT_LEN) {
+
+    if(r->content_read + r->buffer_size > r->content_length) {
+      HTTP_LOG("Server send too much data");
+      return false;
+    }
+    r->content_read += r->buffer_size;
+    
+    if(r->content_read == r->content_length) {
+      r->state = HTTP_REQUEST_STATE_DONE;
+    }
+    
+    *data = r->buffer + r->buffer_pos;
+    *data_len = r->buffer_size;
+    r->buffer_size = 0;
+
+    return true;
+  } else if(r->body == HTTP_REQUEST_BODY_CHUNKED) {
+
+    for(size_t i=0;i<r->buffer_size;i++) {
+      char c = r->buffer[r->buffer_pos + i];
+
+      if(c == '\r') {
+	r->state2 = HTTP_REQUEST_STATE_R;
+      } else if(c == '\n') {
+	if(r->state2 == HTTP_REQUEST_STATE_R) r->state2 = HTTP_REQUEST_STATE_RN;
+	else r->state2 = HTTP_REQUEST_STATE_IDLE;
+      } else {
+	r->state2 = HTTP_REQUEST_STATE_IDLE;
+      }
+
+      if(r->content_read == 0) {
+	if(r->state2 == HTTP_REQUEST_STATE_IDLE) {
+	  assert(r->key_len < 4);
+	  r->key[r->key_len++] = c;
+	} else if(r->state2 == HTTP_REQUEST_STATE_RN) {
+
+	  // TODO: this may be incorrect
+	  if(r->key_len == 0) {
+	    /* HTTP_LOG("Failed to parse: '%.*s'", (int) r->key_len, r->key); */
+	    /* r->state = HTTP_REQUEST_STATE_ERROR; */
+	    /* return false; */
+
+	    continue;
+	  }
+
+	  if(!http_parse_hex_u64(r->key, r->key_len, &r->content_read)) {
+	    HTTP_LOG("Failed to parse: '%.*s'", (int) r->key_len, r->key);
+	    r->state = HTTP_REQUEST_STATE_ERROR;
+	    return false;
+	  }
+	  r->key_len = 0;
+
+	  size_t advance = i + 1; // consume '\n'
+	  
+	  r->buffer_pos += advance;
+	  r->buffer_size -= advance;
+	  if(r->content_read == 0) {
+	    r->state = HTTP_REQUEST_STATE_DONE;
+	    return false;
+	  } else {
+	    goto start;
+	  }
+	  
+	} else {
+	  // parse \r\n
+	}	      
+      } else {
+
+	if(r->state2 == HTTP_REQUEST_STATE_RN) {
+	  
+	  size_t len = i - 1;      // exclude '\r'
+	  size_t advance = i + 1;  // consume '\n'
+
+	  *data = r->buffer + r->buffer_pos;
+	  *data_len = len;
+
+	  r->buffer_pos += advance;
+	  r->buffer_size -= advance;
+
+	  assert(r->content_read >= len);
+	  r->content_read -= len;
+	  r->content_length += len;
+	  return true;
+	} else {
+	  //do nothing
+	}	  
+      }
+      
+    }
+
+    if(r->content_read == 0) {
+      r->buffer_size = 0;
+      
+      goto start;
+    } else {
+
+      size_t len = r->buffer_size;
+      if(r->state2 == HTTP_REQUEST_STATE_R) {
+	len--;
+      }
+
+      *data = r->buffer + r->buffer_pos;
+      *data_len = len;
+
+      assert(r->content_read >= len);
+      r->content_read -= len;
+      r->content_length += len;
+
+      r->buffer_pos += r->buffer_size;
+      r->buffer_size -= r->buffer_size;
+      
+      return true;
+    }
+      
+
+  } else {
+    
+    HTTP_LOG("Unimplemented body specification");
+    return false;
+  }
+    
+}
+
+HTTP_DEF bool http_parse_hex_u64(char *buffer, size_t buffer_len, uint64_t *out) {
+  size_t i = 0;
+  uint64_t res = 0;
+
+  while(i < buffer_len) {
+    char c = buffer[i];
+
+    res *= 16;
+    if('0' <= c && c <= '9') {
+      res += c - '0';
+    } else if('a' <= c && c <= 'z') {
+      res += c - 'W';
+    } else if('A' <= c && c <= 'Z') {
+      res += c - '7';
+    } else {
+      break;
+    }
+    i++;
+  }
+
+  *out = res;
+  
+  return i > 0 && i == buffer_len;
+}
+
+HTTP_DEF bool http_parse_u64(char *buffer, size_t buffer_len, uint64_t *out) {
+
+  uint64_t res = 0;
+
+  size_t i = 0;
+  while(i < buffer_len && '0' <= buffer[i] && buffer[i] <= '9') {
+    res *= 10;
+    res += buffer[i] - '0';
+    i++;
+  }
+
+  *out = res;
+  
+  return i > 0 && i == buffer_len;
+}
+
+// key  : 'ConTENT-LeNGTHasdfasdfasdf'
+// value: 'content-length'
+//     => true
+HTTP_DEF bool http_header_eq(const char *key, size_t key_len, const char *value, size_t value_len) {
+
+  if(key_len != value_len) {
+    return false;
+  }
+
+  for(size_t i=0;i<key_len;i++) {
+    char src = value[i];
+    char trg = key[i];
+
+    if('a' <= src && src <= 'z' &&
+       'A' <= trg && trg <= 'Z')  {
+      trg += ' ';
+    }
+
+    if(src != trg) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+
+HTTP_DEF bool http_sendf(Http_Sendf_Callback send_callback, void *userdata,
+			 char *buffer, size_t buffer_cap, const char *format, ...) {
+  va_list va;
+  va_start(va, format);
+  bool result = http_sendf_impl(send_callback, userdata, buffer, buffer_cap, format, va);
+  va_end(va);
+  return result;
+}
+
+HTTP_DEF bool http_sendf_impl(Http_Sendf_Callback send_callback, void *userdata,
+			      char *buffer, size_t buffer_cap, const char *format, va_list va) {
+  Http_Sendf_Context context = {0};
+  context.send_callback = send_callback;
+  context.buffer = buffer;
+  context.buffer_cap = buffer_cap;
+  context.userdata = userdata;
+  context.last = false;
+
+  size_t buffer_size = 0;
+  size_t format_len = strlen(format);
+  size_t format_last = 0;
+
+  for(size_t i=0;i<format_len;i++) {
+    if(format[i]=='%' && i+1 < format_len) {
+      if(!http_sendf_impl_send(&context, &buffer_size, format + format_last, i - format_last)) {
+	return false;
+      }
+      if (format[i+1] == 'c') { // %c
+	char c = (char) va_arg(va, int);
+	if(!http_sendf_impl_send(&context, &buffer_size, &c, 1)) {
+	  return false;
+	}
+
+	format_last = i+2;
+	i++;
+      } else if(format[i+1]=='s') { // %
+	const char *argument_cstr = va_arg(va, char *);
+	if(!http_sendf_impl_send(&context, &buffer_size, argument_cstr, strlen(argument_cstr))) {
+	  return false;
+	}
+
+	format_last = i+2;
+	i++;
+      } else if(format[i+1]=='d') { // %d
+	int n = va_arg(va, int);
+
+	if(n == 0) {
+	  const char *zero = "0";
+	  if(!http_sendf_impl_send(&context, &buffer_size, zero, 1)) {
+	    return false;
+	  }	  
+	} else {
+#define HTTP_SENDF_DIGIT_BUFFER_CAP 32
+	  static char digit_buffer[HTTP_SENDF_DIGIT_BUFFER_CAP ];
+	  size_t digit_buffer_count = 0;
+	  bool was_negative = false;
+	  if(n < 0) {
+	    was_negative = true;
+	    n *= -1;
+	  }
+	  while(n > 0) {
+	    int m = n % 10;
+	    digit_buffer[HTTP_SENDF_DIGIT_BUFFER_CAP - digit_buffer_count++ - 1] = (char) m + '0';
+	    n = n / 10;
+	  }
+	  if(was_negative) {
+	    digit_buffer[HTTP_SENDF_DIGIT_BUFFER_CAP - digit_buffer_count++ - 1] = '-';
+	  }
+	  if(!http_sendf_impl_send(&context, &buffer_size,
+				   digit_buffer + (HTTP_SENDF_DIGIT_BUFFER_CAP - digit_buffer_count), digit_buffer_count)) {
+	    return false;
+	  }
+	}	
+
+	format_last = i+2;
+	i++;
+      } else if(format[i+1] == '.' && i+3 < format_len &&
+		format[i+2] == '*' && format[i+3] == 's') { //%.*s
+
+	int argument_cstr_len = va_arg(va, int);
+	const char *argument_cstr = va_arg(va, char *);
+
+	if(!http_sendf_impl_send(&context, &buffer_size, argument_cstr, (size_t) argument_cstr_len)) {
+	  return false;
+	}
+
+	format_last = i+4;
+	i+=3;
+      }
+    }
+  }
+
+  context.last = true;
+  if(!http_sendf_impl_send(&context, &buffer_size, format + format_last, format_len - format_last)) {
+    return false;
+  }
+
+  return true;
+}
+
+HTTP_DEF size_t http_sendf_impl_send(Http_Sendf_Context *context, size_t *buffer_size, const char *cstr, size_t cstr_len) {
+  size_t cstr_off = 0;
+  while(true) {
+    *buffer_size = http_sendf_impl_copy(context, *buffer_size, cstr, cstr_len, &cstr_off);
+    if(*buffer_size == context->buffer_cap || (context->last && *buffer_size != 0)) {
+      if(!context->send_callback(context->buffer, *buffer_size, context->userdata)) {
+	return false;
+      }
+    }
+    if(*buffer_size < context->buffer_cap) break;
+    *buffer_size = 0;
+  }
+
+  return true;
+}
+
+HTTP_DEF size_t http_sendf_impl_copy(Http_Sendf_Context *context, size_t buffer_size,
+				     const char *cstr, size_t cstr_len, size_t *cstr_off) {
+  size_t diff = cstr_len - *cstr_off;
+
+  if(buffer_size + diff < context->buffer_cap) {
+    memcpy(context->buffer + buffer_size, cstr + *cstr_off, diff);
+
+    *cstr_off = 0;
+    return buffer_size + diff;
+  } else{
+    size_t buffer_diff = context->buffer_cap - buffer_size;
+    memcpy(context->buffer + buffer_size, cstr + *cstr_off, buffer_diff);
+    
+    (*cstr_off) += buffer_diff;
+    return buffer_size + buffer_diff;
+  }  
+
+}
+
+#endif // HTTP_IMPLEMENTATION
+
+#endif // HTTP_H
+#endif // HTTP_DISABLE
+
+#ifdef IO_ENABLE
+
+#ifndef IO_H
+#define IO_H
+
+#include <stdio.h>
+#include <stdbool.h>
+
+#ifdef _WIN32
+#  include <windows.h>
+#  define IO_MAX_PATH MAX_PATH  
+#endif //_WIN32
+
+#ifndef IO_DEF
+#  define IO_DEF static inline
+#endif //IO_DEF
+
+#ifndef IO_LOG
+#  ifndef IO_QUIET
+#    define IO_LOG(fmt, ...) fprintf(stderr, "IO_LOG: "fmt"\n", __VA_ARGS__)
+#  else 
+#    define IO_LOG(...)
+#  endif // IO_VERBOSE
+#endif //IO_LOG
+
+////////////////////////////////////////////////////////////////////////////////////////
+
+// Io_Util
+
+typedef bool (*Io_Stream_Callback)(void *userdata, const unsigned char *buf, size_t buf_size);
+
+IO_DEF bool io_slurp_file(const char *filepath, unsigned char **data, size_t *data_size);
+IO_DEF bool io_write_file(const char *filepath, unsigned char *data, size_t data_size);
+IO_DEF bool io_delete_file(const char *filepath);
+IO_DEF bool io_stream_file(const char *filepath, Io_Stream_Callback callback, unsigned char *buf, size_t buf_size, void *userdata);
+
+IO_DEF bool io_create_dir(const char *dir_path, bool *existed);
+IO_DEF bool io_delete_dir(const char *dir_path);
+
+IO_DEF bool io_exists(const char *file_path, bool *is_file);
+
+////////////////////////////////////////////////////////////////////////////////////////
+
+// Io_Dir
+
+typedef struct{
+#ifdef _WIN32
+    WIN32_FIND_DATAW file_data;
+    HANDLE handle;
+    bool stop;
+#else
+    struct dirent *ent;
+    DIR *handle;
+#endif //_WIN32
+
+    const char *name;
+}Io_Dir;
+
+typedef struct{
+  char abs_name[IO_MAX_PATH];
+  char *name;
+  bool is_dir;  
+}Io_Dir_Entry;
+
+IO_DEF bool io_dir_open(Io_Dir *dir, const char *dir_path);
+IO_DEF bool io_dir_next(Io_Dir *dir, Io_Dir_Entry *entry);
+IO_DEF void io_dir_close(Io_Dir *dir);
+
+////////////////////////////////////////////////////////////////////////////////////////
+
+// Io_File
+
+typedef enum{
+  IO_MODE_READ = 0,
+  IO_MODE_WRITE,
+  COUNT_IO_MODE,
+}Io_Mode;
+
+#ifdef _WIN32
+typedef struct{ HANDLE handle; DWORD size; DWORD pos; }Io_File;
+#else
+typedef struct{ FILE *f; }Io_File;
+#endif //_WIN32
+
+IO_DEF bool io_file_size(Io_File *f, size_t *size);
+
+IO_DEF bool io_file_open(Io_File *f, const char *filepath, Io_Mode mode);
+IO_DEF int io_file_seek(Io_File *f, long int offset, int whence);
+IO_DEF long int io_file_tell(Io_File *f);
+IO_DEF size_t io_file_read(Io_File *f, void *ptr, size_t size, size_t count);
+IO_DEF size_t io_file_write(Io_File *f, void *ptr, size_t size, size_t nmemb);
+IO_DEF void io_file_close(Io_File *f);
+
+////////////////////////////////////////////////////////////////////////////////////////
+
+IO_DEF int io_last_error();
+IO_DEF const char *io_last_error_cstr();
+
+#ifdef IO_IMPLEMENTATION
+
+#define io_file_write_cstr(f, cstr) io_file_write((f), (cstr), 1, (strlen(cstr)))
+
+IO_DEF bool io_slurp_file(const char *filepath, unsigned char **data, size_t *data_size) {
+  Io_File f;
+  if(!io_file_open(&f, filepath, IO_MODE_READ)) {
+    IO_LOG("Failed to open '%s': (%d) %s",
+	   filepath, io_last_error(), io_last_error_cstr());
+    return false;
+  }
+
+  if(!io_file_size(&f, data_size)) {
+    io_file_close(&f);
+    return false;
+  }
+
+  unsigned char *result = malloc(*data_size);
+  if(!result) {
+    io_file_close(&f);
+    IO_LOG("Failed to allocate enough memory. Tried to allocate: %zu bytes", *data_size);
+    return false;
+  }
+
+  if(*data_size != io_file_read(&f, result, 1, *data_size)) {
+    io_file_close(&f);
+    IO_LOG("Failed to read: '%s': (%d) %s",
+	   filepath, io_last_error(), io_last_error_cstr());
+    return false;
+  }
+
+  *data = result;
+  io_file_close(&f);
+
+  return true;
+}
+
+IO_DEF bool io_write_file(const char *filepath, unsigned char *data, size_t data_size) {
+  Io_File f;
+  if(!io_file_open(&f, filepath, IO_MODE_WRITE)) {
+    IO_LOG("Failed to open '%s': (%d) %s",
+	   filepath, io_last_error(), io_last_error_cstr());
+    return false;
+  }
+
+  if(data_size != io_file_write(&f, data, 1, data_size)) {
+    io_file_close(&f);
+    IO_LOG("Failed to write '%s': (%d) %s",
+	   filepath, io_last_error(), io_last_error_cstr());
+    return false;    
+  }
+
+  io_file_close(&f);
+  return true;
+}
+
+IO_DEF bool io_delete_file(const char *filepath) {
+  if(!DeleteFile(filepath)) {
+    IO_LOG("Failed to delete file '%s': (%d) %s",
+	   filepath, io_last_error(), io_last_error_cstr());
+    return false;
+  }
+
+  return true;
+}
+
+IO_DEF bool io_stream_file(const char *filepath, Io_Stream_Callback callback, unsigned char *buf, size_t buf_size, void *userdata) {
+  Io_File f;
+  if(!io_file_open(&f, filepath, IO_MODE_READ)) {
+    IO_LOG("Failed to open '%s': (%d) %s",
+	   filepath, io_last_error(), io_last_error_cstr());
+    return false;
+  }
+
+  while(true) {
+    size_t read = io_file_read(&f, buf, 1, buf_size);
+    if(read == 0) {
+      break;
+    }
+
+    if(!callback(userdata, buf, read)) {
+      io_file_close(&f);
+      return false;
+    }    
+  }
+
+  io_file_close(&f);
+  return true;
+}
+
+IO_DEF bool io_create_dir(const char *dir_path, bool *_existed) {
+  if(CreateDirectory(dir_path, NULL)) {
+    if(_existed) *_existed = false;
+    return true;
+  } else {
+    bool existed = io_last_error() == ERROR_ALREADY_EXISTS;
+    if(!existed) {
+      IO_LOG("Failed to create direcory '%s': (%d) %s",
+	     dir_path, io_last_error(), io_last_error_cstr());
+      return false;
+    }
+  
+    if(_existed) *_existed = existed;    
+    return true;    
+  }
+}
+
+IO_DEF bool io_delete_dir(const char *dir_path) {
+  Io_Dir dir;
+  if(!io_dir_open(&dir, dir_path)) {
+    return true;
+  }
+
+  Io_Dir_Entry entry;
+  while(io_dir_next(&dir, &entry)) {
+
+    if(strncmp(entry.name, ".", 1) == 0 ||
+       strncmp(entry.name, "..", 2) == 0) {
+      continue;
+    }
+    
+    if(entry.is_dir) {
+      if(!io_delete_dir(entry.abs_name)) {
+	io_dir_close(&dir);
+	return false;
+      }
+    } else {
+      if(!io_delete_file(entry.abs_name)) {
+	io_dir_close(&dir);
+	IO_LOG("Failed to delete directory '%s': Can not delete file: '%s'", dir_path, entry.name);
+	return false;
+      }
+    }
+  }
+
+  io_dir_close(&dir);
+
+  if(!RemoveDirectory(dir_path)) {
+    IO_LOG("Failed to remove direcory '%s': (%d) %s",
+	   dir_path, io_last_error(), io_last_error_cstr()); 
+    return false;
+  }
+  
+  return true;
+}
+
+IO_DEF bool io_exists(const char *file_path, bool *is_file) {
+  DWORD attribs = GetFileAttributes(file_path);
+  if(is_file) *is_file = !(attribs & FILE_ATTRIBUTE_DIRECTORY);
+  return attribs != INVALID_FILE_ATTRIBUTES;
+}
+////////////////////////////////////////////////////////////////////////////////////////
+
+IO_DEF bool io_dir_open(Io_Dir *dir, const char *dir_path) {
+#ifdef _WIN32
+  int num_wchars = MultiByteToWideChar(CP_UTF8, 0, dir_path, -1, NULL, 0); 
+  wchar_t *my_wstring = (wchar_t *)malloc((num_wchars+1) * sizeof(wchar_t));
+  MultiByteToWideChar(CP_UTF8, 0, dir_path, -1, my_wstring, num_wchars);
+  my_wstring[num_wchars-1] = '*';
+  my_wstring[num_wchars] = 0;
+
+  // Use my_wstring as a const wchar_t *
+  dir->handle = FindFirstFileExW(my_wstring, FindExInfoStandard, &dir->file_data, FindExSearchNameMatch, NULL, 0);
+  if(dir->handle == INVALID_HANDLE_VALUE) {
+    free(my_wstring);
+    return false;
+  }
+
+  bool is_dir = (dir->file_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) > 0;
+  if(!is_dir) {
+    free(my_wstring);
+    return false;
+  }
+
+  dir->name = dir_path;
+  dir->stop = false;
+
+  free(my_wstring);
+  return true;
+#else
+  return false;
+#endif //_WIN32
+}
+
+IO_DEF bool io_dir_next(Io_Dir *dir, Io_Dir_Entry *entry) {
+#ifdef _WIN32
+  if(dir->stop) {
+    return false;
+  }
+
+  entry->is_dir = (dir->file_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) > 0;
+
+  size_t len = strlen(dir->name);
+  memcpy(entry->abs_name, dir->name, len);
+  int len2 = WideCharToMultiByte(CP_ACP, 0, dir->file_data.cFileName, -1, NULL, 0, NULL, NULL);
+  WideCharToMultiByte(CP_ACP, 0, dir->file_data.cFileName, -1, entry->abs_name + len, len2, NULL, NULL);
+
+  //WHAT IS THIS
+  if(entry->is_dir) {
+    entry->abs_name[len + len2-1] = '/';
+    entry->abs_name[len + len2] = 0;       
+  } else {
+    entry->abs_name[len + len2-1] = 0;
+  }
+
+  entry->name = (char *) &entry->abs_name[len];
+
+  if(FindNextFileW(dir->handle, &dir->file_data) == 0) {
+    dir->stop = true;
+  }
+
+  return true;
+#else
+  return false;
+#endif //_WIN32
+}
+
+IO_DEF void io_dir_close(Io_Dir *dir) {
+#ifdef _WIN32
+  FindClose(dir->handle);
+#else
+  
+#endif //_WIN32
+}
+
+////////////////////////////////////////////////////////////////////////////////////////
+
+IO_DEF bool io_file_size(Io_File *f, size_t *size) {
+#ifdef _WIN32
+  *size = f->size;
+  return true;
+#else
+  return false;
+#endif //_WIN32
+}
+
+IO_DEF bool io_file_open(Io_File *f, const char *filepath, Io_Mode mode) {
+#ifdef _WIN32
+  if(mode < 0 || COUNT_IO_MODE <= mode)
+    return false;
+
+  f->handle = INVALID_HANDLE_VALUE;
+
+  if(mode == IO_MODE_READ) {
+    f->handle = CreateFile(filepath, GENERIC_READ,
+			   FILE_SHARE_READ,
+			   NULL,
+			   OPEN_EXISTING,
+			   FILE_ATTRIBUTE_NORMAL,
+			   NULL);
+    if(f->handle == INVALID_HANDLE_VALUE)
+      goto error;
+
+    f->size = GetFileSize(f->handle, NULL);
+    if(f->size == INVALID_FILE_SIZE)
+      goto error;
+
+    f->pos = 0;
+  } else {
+    f->handle = CreateFile(filepath,
+			   GENERIC_WRITE, 0, NULL,
+			   CREATE_ALWAYS,
+			   FILE_ATTRIBUTE_NORMAL,
+			   NULL);
+    if(f->handle == INVALID_HANDLE_VALUE)
+      goto error;
+    
+    f->pos = 0;
+    f->size = INVALID_FILE_SIZE;
+  }
+  
+  return true;
+ error:
+
+  if(f->handle != INVALID_HANDLE_VALUE)
+    CloseHandle(f->handle);
+  
+  return false;
+#else
+  return false;
+#endif //_WIN32  
+}
+
+IO_DEF int io_file_seek(Io_File *f, long int offset, int whence) {
+#ifdef _WIN32
+  DWORD moveMethod;
+
+  switch (whence) {
+  case SEEK_SET: {
+    moveMethod = FILE_BEGIN;    
+  } break;
+  case SEEK_CUR: {
+    moveMethod = FILE_CURRENT;    
+  } break;
+  case SEEK_END: {
+    moveMethod = FILE_END;    
+  } break;
+  default: {
+    return -1;  // Invalid whence
+  } break;
+  }
+
+  f->pos = SetFilePointer(f->handle, offset, NULL, moveMethod);
+  if(f->pos == INVALID_SET_FILE_POINTER)
+    return -1;
+
+  return 0;
+#else
+  return -1;
+#endif //_WIN32
+}
+
+IO_DEF long int io_file_tell(Io_File *f) {
+#ifdef _WIN32
+  return (long int) f->pos;
+#else
+  return -1;
+#endif //_WIN32
+}
+
+IO_DEF void io_file_close(Io_File *f) {
+#ifdef _WIN32
+  CloseHandle(f->handle);
+#else
+#endif //_WIN32
+}
+
+
+IO_DEF size_t io_file_read(Io_File *f, void *ptr, size_t size, size_t count) {
+#ifdef _WIN32
+  DWORD bytes_read;
+  DWORD bytes_to_read = (DWORD) (size * count);
+
+  if(!ReadFile(f->handle, ptr, bytes_to_read, &bytes_read, NULL))
+    return 0;
+  f->pos += bytes_read;
+
+  return (size_t) (bytes_read / size);
+#else
+  return 0;
+#endif //_WIN32
+}
+
+IO_DEF size_t io_file_write(Io_File *f, void *ptr, size_t size, size_t nmemb) {
+#ifdef _WIN32
+  DWORD bytes_written;
+  DWORD bytes_to_write = (DWORD) (size * nmemb);
+  
+  if(!WriteFile(f->handle, ptr, bytes_to_write, &bytes_written, NULL))
+    return 0;
+
+  return (size_t) (bytes_written / size);
+#else
+  return 0;
+#endif //_WIN32
+}
+
+////////////////////////////////////////////////////////////////////////////////////////
+
+IO_DEF int io_last_error() {
+#ifdef _WIN32
+  return GetLastError();
+#else
+  return 0;
+#endif //_WIN32
+}
+
+IO_DEF const char *io_last_error_cstr() {
+#ifdef _WIN32
+  DWORD error = GetLastError();
+  static char buffer[1024];
+
+  FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM,
+		 NULL,
+		 error,
+		 MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+		 (LPSTR) &buffer,
+		 sizeof(buffer),
+		 NULL);
+  
+  return buffer;
+#else
+  return NULL;
+#endif //_WIN32
+}
+
+#endif //IO_IMPLEMENTATION
+
+#endif //IO_H
+#endif // IO_DISABLE
+
+#ifdef MF_DECODER_ENABLE
+
+#ifndef MF_DECODER_H
+#define MF_DECODER_H
+
+//CREDITS
+// - https://github.com/sipsorcery/mediafoundationsamples
+// - https://www.gamedev.net/articles/programming/general-and-gameplay-programming/decoding-audio-for-xaudio2-with-microsoft-media-foundation-r4280/
+
+// win32
+//   mingw: -lmf -lmfplat -lmfuuid -lmfreadwrite
+//   msvc : mf.lib mfplat.lib mfuuid.lib mfreadwrite.lib
+
+#include <stdbool.h>
+#include <mfapi.h>
+#include <mfplay.h>
+#include <mfreadwrite.h>
+
+#ifndef MF_DECODER_DEF
+#  define MF_DECODER_DEF static inline
+#endif //MF_DECODER_DEF
+
+typedef enum{
+    MF_DECODER_FMT_S16,
+    MF_DECODER_FMT_FLT,
+}MF_Decoder_Fmt;
+
+MF_DECODER_DEF bool mf_decoder_fmt_format_guid(const GUID **guid, MF_Decoder_Fmt fmt);
+MF_DECODER_DEF bool mf_decoder_fmt_bits_per_sample(int *bits, MF_Decoder_Fmt fmt);
+
+typedef struct{
+    IMFSourceReader *source_reader;
+    IMFMediaType *media_type;
+    IMFMediaType *output_media_type;
+    IMFMediaBuffer *media_buffer;
+    IMFByteStream *byte_stream;
+
+    IMFSample *audio_sample;
+    IMFSample *prev_audio_sample;
+
+    bool locked;
+    int sample_size;
+}MF_Decoder;
+
+MF_DECODER_DEF bool mf_decoder_slurp(const char *path, MF_Decoder_Fmt fmt, int *channels, int *sample_rate, unsigned char **samples, unsigned int *samples_count);
+MF_DECODER_DEF bool mf_decoder_slurp_memory(const unsigned char *memory, size_t memory_len, MF_Decoder_Fmt fmt, int *channels, int *sample_rate, unsigned char **out_samples, unsigned int *out_samples_count);
+MF_DECODER_DEF bool mf_decoder_slurp_impl(MF_Decoder *decoder, int *channels, int *sample_rate, unsigned char **out_samples, unsigned int *out_samples_count);
+
+MF_DECODER_DEF bool mf_decoder_init(MF_Decoder *decoder, const char *path, MF_Decoder_Fmt fmt, int *channels, int *sample_rate);
+MF_DECODER_DEF bool mf_decoder_init_memory(MF_Decoder *decoder, const unsigned char *memory, size_t memory_len, MF_Decoder_Fmt fmt, int *channels, int *sample_rate);
+MF_DECODER_DEF bool mf_decoder_init_impl(MF_Decoder *decoder, MF_Decoder_Fmt fmt, int *channels, int *sample_rate);
+
+MF_DECODER_DEF bool mf_decoder_decode(MF_Decoder *decoder, unsigned char **samples, unsigned int *out_samples);
+MF_DECODER_DEF void mf_decoder_free(MF_Decoder *decoder);
+
+#ifdef MF_DECODER_IMPLEMENTATION
+
+static bool mf_decoder_mf_startup = false;
+
+MF_DECODER_DEF bool mf_decoder_slurp_impl(MF_Decoder *decoder, int *channels, int *sample_rate, unsigned char **out_samples, unsigned int *out_samples_count) {
+  
+  unsigned int samples_count = 0;
+  unsigned int samples_cap = 5 * (*sample_rate) * (*channels);
+  unsigned char *samples = malloc(samples_cap * decoder->sample_size);
+  if(!samples) {
+    mf_decoder_free(decoder);
+    return false;
+  }
+
+  unsigned char *decoded_samples;
+  unsigned int decoded_samples_count;
+  while(mf_decoder_decode(decoder, &decoded_samples, &decoded_samples_count)) {
+
+    unsigned int new_samples_cap = samples_cap;
+    while(samples_count + decoded_samples_count > new_samples_cap) {
+      new_samples_cap *= 2;
+    }
+    if(new_samples_cap != samples_cap) {
+      samples_cap = new_samples_cap;
+      samples = realloc(samples, samples_cap * decoder->sample_size);
+      if(!samples) {
+	mf_decoder_free(decoder);
+	return false;
+      }
+    }
+    
+    memcpy(samples + samples_count * decoder->sample_size,
+	   decoded_samples,
+	   decoded_samples_count * decoder->sample_size);
+
+    samples_count += decoded_samples_count;
+  }
+
+  *out_samples = samples;
+  *out_samples_count = samples_count;
+
+  return true;
+}
+
+MF_DECODER_DEF bool mf_decoder_slurp(const char *path, MF_Decoder_Fmt fmt, int *channels, int *sample_rate, unsigned char **out_samples, unsigned int *out_samples_count) {
+  MF_Decoder decoder;
+  if(!mf_decoder_init(&decoder, path, fmt, channels, sample_rate)) {
+    return false;
+  }
+
+  if(!mf_decoder_slurp_impl(&decoder, channels, sample_rate, out_samples, out_samples_count)) {
+    return false;
+  }
+
+  mf_decoder_free(&decoder);
+  return true;
+}
+
+MF_DECODER_DEF bool mf_decoder_slurp_memory(const unsigned char *memory, size_t memory_len, MF_Decoder_Fmt fmt, int *channels, int *sample_rate, unsigned char **out_samples, unsigned int *out_samples_count) {
+  MF_Decoder decoder;
+  if(!mf_decoder_init_memory(&decoder, memory, memory_len, fmt, channels, sample_rate)) {
+    return false;
+  }
+
+  if(!mf_decoder_slurp_impl(&decoder, channels, sample_rate, out_samples, out_samples_count)) {
+    return false;
+  }
+
+  mf_decoder_free(&decoder);
+  return true;
+}
+
+MF_DECODER_DEF bool mf_decoder_init(MF_Decoder *decoder, const char *path, MF_Decoder_Fmt fmt, int *channels, int *sample_rate) {
+
+  if(!mf_decoder_mf_startup) {
+    if(MFStartup(MF_VERSION, 0) != S_OK) {
+      return false;
+    }
+
+    mf_decoder_mf_startup = true;
+  }
+
+  decoder->source_reader = NULL;
+  decoder->byte_stream = NULL;
+  
+  int num_wchars = MultiByteToWideChar(CP_UTF8, 0, path, -1, NULL, 0); 
+  wchar_t *my_wstring = (wchar_t *)malloc((num_wchars+1) * sizeof(wchar_t));
+  if(!my_wstring) {
+    return false;
+  }
+  MultiByteToWideChar(CP_UTF8, 0, path, -1, my_wstring, num_wchars);
+  my_wstring[num_wchars] = 0;
+
+  // SourceReader
+  HRESULT result = MFCreateSourceReaderFromURL(my_wstring,
+					       NULL,
+					       &decoder->source_reader);
+  free(my_wstring);
+  if(result != S_OK) {
+    return false;
+  }
+
+  return mf_decoder_init_impl(decoder, fmt, channels, sample_rate);
+}
+
+MF_DECODER_DEF bool mf_decoder_init_impl(MF_Decoder *decoder, MF_Decoder_Fmt fmt, int *channels, int *sample_rate) {
+
+  decoder->media_type = NULL;
+  decoder->output_media_type = NULL;
+  
+  // MediaType
+  if(decoder->source_reader->lpVtbl->GetCurrentMediaType(decoder->source_reader, (DWORD) MF_SOURCE_READER_FIRST_AUDIO_STREAM, &decoder->media_type) != S_OK) {
+    goto error;
+  }
+
+  if(decoder->source_reader->lpVtbl->SetStreamSelection(decoder->source_reader, (DWORD) MF_SOURCE_READER_FIRST_AUDIO_STREAM, TRUE) != S_OK) {
+    goto error;
+  }
+
+  // MediaType - Attributes
+  GUID major_type;
+  if(decoder->media_type->lpVtbl->GetMajorType(decoder->media_type, &major_type) != S_OK) {
+    goto error;
+  }
+    
+  if( memcmp(&major_type, &MFMediaType_Audio, sizeof(major_type)) != 0) {
+    goto error;
+  }
+    
+  UINT32 attr_count;
+  if(decoder->media_type->lpVtbl->GetCount(decoder->media_type, &attr_count) != S_OK) {
+    goto error;
+  }
+
+  bool got_channels = false;
+  bool got_sample_rate = false;
+  for(UINT32 i=0;i<attr_count;i++) {
+    GUID guid_id;
+    if(decoder->media_type->lpVtbl->GetItemByIndex(decoder->media_type, i, &guid_id, NULL) != S_OK) {
+      goto error;
+    }
+
+    MF_ATTRIBUTE_TYPE attr_type;
+    if(decoder->media_type->lpVtbl->GetItemType(decoder->media_type, &guid_id, &attr_type) != S_OK) {
+      goto error;
+    }
+
+    if( memcmp(&guid_id, &MF_MT_AUDIO_NUM_CHANNELS, sizeof(guid_id)) == 0 ) {
+	    
+      if(attr_type != MF_ATTRIBUTE_UINT32) {
+	goto error;
+      }
+
+      UINT32 value;
+      if(decoder->media_type->lpVtbl->GetUINT32(decoder->media_type, &guid_id, &value) != S_OK) {
+	goto error;
+      }
+
+      *channels = (int) value;
+      got_channels = true;
+    } else if(memcmp(&guid_id, &MF_MT_AUDIO_SAMPLES_PER_SECOND, sizeof(guid_id)) == 0 ) {
+
+      if(attr_type != MF_ATTRIBUTE_UINT32) {
+	goto error;
+      }
+
+      UINT32 value;
+      if(decoder->media_type->lpVtbl->GetUINT32(decoder->media_type, &guid_id, &value) != S_OK) {
+	goto error;
+      }
+
+      *sample_rate = (int) value;
+      got_sample_rate = true;
+    }
+  }
+
+  if(!got_channels || !got_sample_rate) {
+    return false;
+  }
+
+  // Output-MediaType
+  if( MFCreateMediaType(&decoder->output_media_type) != S_OK) {
+    goto error;
+  }    
+
+  if( decoder->output_media_type->lpVtbl->SetGUID(decoder->output_media_type, &MF_MT_MAJOR_TYPE, &MFMediaType_Audio) != S_OK) {
+    goto error;
+  }
+
+  int bits_per_sample;
+  if( !mf_decoder_fmt_bits_per_sample(&bits_per_sample, fmt) ) {
+    return false;
+  }
+  decoder->sample_size = bits_per_sample * (*channels) / 8;
+
+  const GUID *guid;
+  if( !mf_decoder_fmt_format_guid(&guid, fmt) ) {
+    goto error;
+  }
+
+  if( decoder->output_media_type->lpVtbl->SetGUID(decoder->output_media_type, &MF_MT_SUBTYPE, guid) != S_OK) {
+    goto error;
+  }    
+
+  if( decoder->source_reader->lpVtbl->SetCurrentMediaType(decoder->source_reader, MF_SOURCE_READER_FIRST_AUDIO_STREAM, NULL, decoder->output_media_type)) {
+    goto error;
+  }
+
+  decoder->locked = false;
+  decoder->prev_audio_sample = NULL;
+  return true;
+    
+ error:
+  if(decoder->source_reader) decoder->source_reader->lpVtbl->Release(decoder->source_reader);
+  if(decoder->media_type) decoder->media_type->lpVtbl->Release(decoder->media_type);
+  if(decoder->output_media_type) decoder->output_media_type->lpVtbl->Release(decoder->output_media_type);
+  return false;
+}
+
+MF_DECODER_DEF bool mf_decoder_init_memory(MF_Decoder *decoder, const unsigned char *memory, size_t memory_len, MF_Decoder_Fmt fmt, int *channels, int *sample_rate) {
+
+  if(!mf_decoder_mf_startup) {
+    if(MFStartup(MF_VERSION, 0) != S_OK) {
+      return false;
+    }
+
+    mf_decoder_mf_startup = true;
+  }
+
+  decoder->source_reader = NULL;
+  decoder->byte_stream = NULL;
+  
+  if( MFCreateTempFile(
+		       MF_ACCESSMODE_READWRITE,
+		       MF_OPENMODE_DELETE_IF_EXIST,
+		       MF_FILEFLAGS_NONE,
+		       &decoder->byte_stream) != S_OK) {
+    goto error;
+  }
+  ULONG wrote_bytes;
+  if(decoder->byte_stream->lpVtbl->Write(decoder->byte_stream, memory, memory_len, &wrote_bytes) != S_OK) {
+    goto error;
+  }
+  if(decoder->byte_stream->lpVtbl->SetCurrentPosition(decoder->byte_stream, 0) != S_OK) {
+    goto error;
+  } 
+
+  // SourceReader
+  if(MFCreateSourceReaderFromByteStream(decoder->byte_stream,
+					NULL,
+					&decoder->source_reader) != S_OK) {
+    goto error;
+  }
+
+
+  return mf_decoder_init_impl(decoder, fmt, channels, sample_rate);
+ error:
+  if(decoder->byte_stream) decoder->byte_stream->lpVtbl->Release(decoder->byte_stream);
+  return false;
+}
+
+MF_DECODER_DEF bool mf_decoder_decode(MF_Decoder *decoder, unsigned char **samples, unsigned int *out_samples) {
+
+    if(decoder->locked) {
+	if(decoder->media_buffer->lpVtbl->Unlock(decoder->media_buffer) != S_OK) {
+	    return false;
+	}
+
+	decoder->media_buffer->lpVtbl->Release(decoder->media_buffer);
+	if(decoder->prev_audio_sample) decoder->prev_audio_sample->lpVtbl->Release(decoder->prev_audio_sample);
+	decoder->prev_audio_sample = decoder->audio_sample;
+
+	decoder->locked = false;
+    }
+    
+    decoder->audio_sample = NULL;
+    DWORD stream_index, flags;
+    LONGLONG ll_audio_time_stamp;
+    if(decoder->source_reader->lpVtbl->ReadSample(decoder->source_reader,
+						  MF_SOURCE_READER_FIRST_AUDIO_STREAM,
+						  0,
+						  &stream_index,
+						  &flags,
+						  &ll_audio_time_stamp,
+						  &decoder->audio_sample) != S_OK) {
+	return false;
+    }
+
+
+    if( flags & (MF_SOURCE_READERF_ENDOFSTREAM
+		 | MF_SOURCE_READERF_NEWSTREAM
+		 | MF_SOURCE_READERF_NATIVEMEDIATYPECHANGED
+		 | MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED)) {
+	return false;
+    }
+
+    if(!decoder->audio_sample) {
+	return false;
+    }
+
+    decoder->media_buffer = NULL;
+    if(decoder->audio_sample->lpVtbl->
+       ConvertToContiguousBuffer(decoder->audio_sample, &decoder->media_buffer) != S_OK) {
+	return false;
+    }
+
+    DWORD samples_len_bytes;
+    if(decoder->media_buffer->lpVtbl->Lock(decoder->media_buffer, samples, NULL, &samples_len_bytes) != S_OK) {
+	return false;
+    }
+    *out_samples = samples_len_bytes / decoder->sample_size;
+
+    decoder->locked = true;
+    
+    return true;
+}
+
+MF_DECODER_DEF void mf_decoder_free(MF_Decoder *decoder) {
+
+    if(decoder->locked) {
+	decoder->media_buffer->lpVtbl->Unlock(decoder->media_buffer);
+	decoder->locked = false;
+    }
+    
+    decoder->source_reader->lpVtbl->Release(decoder->source_reader);
+    decoder->output_media_type->lpVtbl->Release(decoder->output_media_type);
+    decoder->media_type->lpVtbl->Release(decoder->media_type);
+    if(decoder->byte_stream) decoder->byte_stream->lpVtbl->Release(decoder->byte_stream);
+}
+
+MF_DECODER_DEF bool mf_decoder_fmt_format_guid(const GUID **guid, MF_Decoder_Fmt fmt) {
+    switch(fmt) {
+    case MF_DECODER_FMT_S16: {
+	*guid = &MFAudioFormat_PCM;
+	return true;
+    } break;
+    case MF_DECODER_FMT_FLT: {
+	//*guid = &MFAudioFormat_FLT;
+	//return true;
+	return false;
+    } break;
+    default: {
+	return false;
+    } break;
+    }
+}
+
+MF_DECODER_DEF bool mf_decoder_fmt_bits_per_sample(int *bits, MF_Decoder_Fmt fmt) {
+    switch(fmt) {
+    case MF_DECODER_FMT_S16: {
+	*bits = 16;
+	return true;
+    } break;
+    case MF_DECODER_FMT_FLT: {
+	*bits = 32;
+	return true;
+    } break;
+    default: {
+	return false;	
+    } break;
+    }
+
+}
+
+#endif //MF_DECODER_IMPLEMENTATION
+
+#endif //MF_DECODER_H
+#endif // MF_DECODER_DISABLE
+
+#ifdef MP4_ENABLE
+
+#ifndef MP4_H
+#define MP4_H
+
+//https://web.archive.org/web/20180219054429/http://l.web.umkc.edu/lizhu/teaching/2016sp.video-communication/ref/mp4.pdf
+
+#ifndef TYPES_H
+#define TYPES_H
+
+#include <stdint.h>
+#include <stdbool.h>
+
+typedef uint8_t u8;
+typedef char s8; // because of mingw warning not 'int8_t'
+typedef uint16_t u16;
+typedef int16_t s16;
+typedef uint32_t u32;
+typedef int32_t s32;
+typedef uint64_t u64;
+typedef int64_t s64;
+
+typedef float f32;
+typedef double f64;
+
+#define return_defer(n) do{			\
+    result = (n);				\
+    goto defer;					\
+  }while(0)
+
+#define errorf(...) do{						\
+    fflush(stdout);						\
+    fprintf(stderr, "%s:%d:ERROR: ", __FILE__, __LINE__);	\
+    fprintf(stderr,  __VA_ARGS__ );				\
+    fprintf(stderr, "\n");					\
+    fflush(stderr);						\
+  }while(0)
+
+#define panicf(...) do{						\
+    errorf(__VA_ARGS__);					\
+    exit(1);							\
+  }while(0)
+
+#endif // TYPES_H
+
+#ifndef MP4_DEF
+#  define MP4_DEF static inline
+#endif // MP4_DEF
+
+#ifndef MP4_LOG
+#  ifdef MP4_QUIET
+#    define MP4_LOG(...)
+#  else
+#    include <stdio.h>
+#    define MP4_LOG(...) fprintf(stderr, "MP4_LOG: "); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n")
+#  endif // MP4_QUIET
+#endif // MP4_QUIET
+
+typedef enum{
+  MP4_TYPE_NONE = 0,
+  MP4_TYPE_FTYP,
+  MP4_TYPE_MOOV,
+  MP4_TYPE_MVHD,
+  MP4_TYPE_MVEX,
+  MP4_TYPE_TREX,
+  MP4_TYPE_TRAK,
+  MP4_TYPE_TKHD,
+  MP4_TYPE_MDIA,
+  MP4_TYPE_MDHD,
+  MP4_TYPE_HDLR,
+  MP4_TYPE_MINF,
+  MP4_TYPE_DINF,
+  MP4_TYPE_DREF,
+  MP4_TYPE_STBL,
+  MP4_TYPE_STSD,
+  MP4_TYPE_STTS,
+  MP4_TYPE_STSC,
+  MP4_TYPE_STCO,
+  MP4_TYPE_STSZ,
+  MP4_TYPE_SMHD,
+  MP4_TYPE_SIDX,
+  MP4_TYPE_MOOF,
+  MP4_TYPE_MFHD,
+  MP4_TYPE_TRAF,
+  MP4_TYPE_TFHD,
+  MP4_TYPE_TFDT,
+  MP4_TYPE_TRUN,
+  MP4_TYPE_MDAT,
+  MP4_TYPE_UDTA,
+}Mp4_Type;
+
+typedef char Mp4_Word[5]; // 4 + '\0'
+
+typedef enum {
+  MP4_MEDIA_TYPE_NONE = 0,
+  MP4_MEDIA_TYPE_AUDIO,
+  MP4_MEDIA_TYPE_VIDEO,
+}Mp4_Media_Type;
+
+typedef enum {
+  MP4_CODEC_TYPE_NONE = 0,
+  MP4_CODEC_TYPE_AAC,
+  MP4_CODEC_TYPE_H264,
+  MP4_CODEC_TYPE_UNKNOWN,
+}Mp4_Codec_Type;
+
+typedef struct{
+  u8 *data;
+  u64 len;
+}Mp4;
+
+typedef struct{
+  u32 track_id;  
+  Mp4_Media_Type type;
+  Mp4_Codec_Type codec;
+  Mp4_Word coding_name;
+  f64 duration; // in seconds
+  
+  bool tables_are_empty;
+
+  u32 sample_count; // stsz
+  Mp4 sample_sizes;
+
+  u32 chunk_count; // stco
+  u32 chunk_index;
+  Mp4 chunk_offsets;
+  
+  u32 entry_count; // stsc
+  Mp4 entries;
+  u32 current_sample_count;
+
+  //Audio
+  u16 channels;
+  u32 sample_rate;
+
+  //Video
+  u16 width, height;
+}Mp4_Media;
+
+#define mp4_from(data, len) (Mp4) {(data), (len)}
+
+MP4_DEF bool mp4_next_media(Mp4 *m, Mp4_Media *media);
+MP4_DEF bool mp4_has_audio(Mp4 m, Mp4_Media *media);
+MP4_DEF bool mp4_next_fragmented_data(Mp4 *m, u32 track_id, u8 **data, u64 *data_len);
+MP4_DEF bool mp4_media_next_data(Mp4_Media *media, u32 *offset, u64 *len);
+
+MP4_DEF bool mp4_find(Mp4 m, Mp4_Type type, Mp4 *dest);
+MP4_DEF bool mp4_find_next(Mp4 *m, Mp4_Type type, Mp4 *dest);
+MP4_DEF bool mp4_next(Mp4 *m, u32 *size, Mp4_Type *type);
+
+const char *mp4_type_name(Mp4_Type t);
+
+#ifdef MP4_IMPLEMENTATION
+
+// 0xaa 0xbb 0xcc 0xdd 0xee 0xff 0x11 0x22
+//    |
+//    v
+// 0x22 0x11 0xff 0xee 0xdd 0xcc 0xbb 0xaa
+static inline u64 mp4_swap_u64(u64 in) {
+  return
+    ((in & 0x00000000000000ff) << 56) |
+    ((in & 0x000000000000ff00) << 48) |
+    ((in & 0x0000000000ff0000) << 32) |
+    ((in & 0x00000000ff000000) <<  8) |    
+    ((in & 0x000000ff00000000) >>  8) |
+    ((in & 0x0000ff0000000000) >> 32) |
+    ((in & 0x00ff000000000000) >> 48) |
+    ((in & 0xff00000000000000) >> 56);
+}
+
+// 0xaa 0xbb 0xcc 0xdd
+//    |
+//    v
+// 0xdd 0xcc 0xbb 0xaa
+static inline u32 mp4_swap_u32(u32 in) {
+  return
+    ((in & 0x000000ff) << 24) |
+    ((in & 0x0000ff00) << 8) |
+    ((in & 0x00ff0000) >> 8) |
+    ((in & 0xff000000) >> 24);
+}
+
+// 0xaa 0xbb
+// |
+// v
+// 0xbb 0xaa
+static inline u16 mp4_swap_u16(u16 in) {
+  return
+    ((in & 0x00ff) << 8) |
+    ((in & 0xff00) >> 8);
+}
+
+#define __MP4_READ(ptr, m, n) do{					\
+    if((m).len < (n)) {							\
+      MP4_LOG("Unexpected eof");					\
+      return false;							\
+    }									\
+    memcpy((ptr), (m).data, (n)); (m).data += (n); (m).len -= (n);	\
+  }while(0)
+#define __MP4_DISCARD(m, n) do{			\
+    if((m).len < (n)) {				\
+      MP4_LOG("Unexpected eof");		\
+      return false;				\
+    }						\
+    (m).data += (n); (m).len -= (n);		\
+  }while(0)
+#define __MP4_READ_U64(ptr, m) do{		\
+    __MP4_READ(ptr, m, 8);			\
+    *ptr = mp4_swap_u64(*(ptr));		\
+  }while(0)
+#define __MP4_READ_U32(ptr, m) do{		\
+    __MP4_READ(ptr, m, 4);			\
+    *ptr = mp4_swap_u32(*(ptr));		\
+  }while(0)
+#define __MP4_READ_U16(ptr, m) do{		\
+    __MP4_READ(ptr, m, 2);			\
+    *ptr = mp4_swap_u16(*(ptr));		\
+  }while(0)
+
+
+#ifndef return_defer
+#  define return_defer(n) do{ result = (n); goto defer; }while(0)
+#endif // return_defer
+
+static const Mp4_Word mp4_box_names[] = {
+  "NONE", "ftyp", "moov", "mvhd", "mvex", "trex", "trak", "tkhd", "mdia", "mdhd", "hdlr", "minf", "dinf", "dref", "stbl", "stsd", "stts", "stsc", "stco", "stsz", "smhd", "sidx", "moof", "mfhd", "traf", "tfhd", "tfdt", "trun", "mdat", "udta"
+};
+
+static u64 mp4_box_names_len = sizeof(mp4_box_names) / sizeof(*mp4_box_names);
+
+#define mp4_type_name(t) mp4_box_names[(t)]
+
+MP4_DEF bool mp4_next_media(Mp4 *m, Mp4_Media *media) {
+
+  u32 size;
+  Mp4_Type type;
+  if(!mp4_next(m, &size, &type)) {
+    return false;
+  }
+
+  Mp4 trak;
+  if(type == MP4_TYPE_FTYP) {        // Beginning of FILE. Advance to 'moov'. Advance to 'trak'
+    if(!mp4_find(*m, MP4_TYPE_MOOV, m)) {
+      MP4_LOG("Can not find 'moov' in mp4. Mp4-File is propably damaged");
+      return false;
+    }
+
+    if(!mp4_find_next(m, MP4_TYPE_TRAK, &trak)) {
+      return false;
+    }
+  } else if(type == MP4_TYPE_TRAK) { // Inside 'moov'. Update 'trak'
+    trak = mp4_from(m->data - size + 8, size - 8);
+  } else {                           // Inside 'moov'. Advance to 'trak'
+    if(!mp4_find_next(m, MP4_TYPE_TRAK, &trak)) {
+      return false;
+    }
+  }
+
+  Mp4 tkhd;
+  if(!mp4_find(trak, MP4_TYPE_TKHD, &tkhd)) {
+    MP4_LOG("Can not find 'tkhd' inside 'trak'. Mp4-File is propably damaged");
+    return false;
+  }
+
+  // 'TrackHeaderBox'
+  // only look for track_id, for now
+  u8 version;
+  __MP4_READ(&version, tkhd, 1);
+
+  if(version == 1) {
+    __MP4_DISCARD(tkhd, 3 + 8 + 8);
+  } else { // version == 0
+    __MP4_DISCARD(tkhd, 3 + 4 + 4);
+  }
+      
+  __MP4_READ_U32(&media->track_id, tkhd);
+
+  Mp4 mdia;
+  if(!mp4_find(trak, MP4_TYPE_MDIA, &mdia)) {
+    MP4_LOG("Can not find 'mdia' inside 'trak'. Mp4-File is propably damaged");
+    return false;
+  }
+
+  Mp4 mdhd;
+  if(!mp4_find(mdia, MP4_TYPE_MDHD, &mdhd)) {
+    MP4_LOG("Can not find 'mdhd' inside 'mdia'. Mp4-File is propably damaged");
+    return false;
+  }
+
+  // 'MediaHeaderBox'
+  // only look for duration, for now
+
+  __MP4_READ(&version, mdhd, 1);
+  
+  u32 timescale;    //5198848  //44100
+  if(version == 1) {
+    __MP4_DISCARD(mdhd, 3 + 8 + 8);
+    __MP4_READ_U32(&timescale, mdhd);
+    
+    u64 duration;
+    __MP4_READ_U64(&duration, mdhd);
+    media->duration = (f64) duration / (f64) timescale;
+  } else { // version == 0
+    __MP4_DISCARD(mdhd, 3 + 4 + 4);
+    __MP4_READ_U32(&timescale, mdhd);
+    
+    u32 duration;
+    __MP4_READ_U32(&duration, mdhd);
+    media->duration = (f64) duration / (f64) timescale;
+  }  
+
+  Mp4 hdlr;
+  if(!mp4_find(mdia, MP4_TYPE_HDLR, &hdlr)) {
+    MP4_LOG("Can not find 'hdlr' inside 'mdia'. Mp4-File is propably damaged");
+    return false;
+  }
+  
+  // 'HandlerBox'
+  // only look for handler_type, for now
+  __MP4_DISCARD(hdlr, 4 + 4);
+
+  u8 buf[4];
+  __MP4_READ(buf, hdlr, 4);
+  if(memcmp(buf, "soun", 4) == 0) {
+    media->type = MP4_MEDIA_TYPE_AUDIO;
+  } else if(memcmp(buf, "vide", 4) == 0) {
+    media->type = MP4_MEDIA_TYPE_VIDEO;
+  } else {
+    MP4_LOG("Unknown handler_type: '%.*s'", 4, buf);
+    return false;
+  }
+
+  Mp4 minf;
+  if(!mp4_find(mdia, MP4_TYPE_MINF, &minf)) {
+    MP4_LOG("Can not find 'minf' inside 'mdia'. Mp4-File is propably damaged");
+  }
+
+  Mp4 stbl;
+  if(!mp4_find(minf, MP4_TYPE_STBL, &stbl)) {
+    MP4_LOG("Can not find 'stbl' inside 'minf'. Mp4-File is propably damaged");
+  }
+
+  Mp4 stsd;
+  if(!mp4_find(stbl, MP4_TYPE_STSD, &stsd)) {
+    MP4_LOG("Can not find 'stsd' inside 'stbl'. Mp4-File is propably damaged");
+  }
+
+  // 'SampleDescriptionBox'
+  // This my be more complicated than this. A Sample Description Box (stsd) may contain
+  // multiple entries. This considers only the first one.
+  
+  // Depending on the 'coding_name', the 'AudioSampleEntry' or 'VideoSampleEntry' may
+  // contain more box's. 
+
+  __MP4_DISCARD(stsd, 4);
+  u32 entry_count;
+  __MP4_READ_U32(&entry_count, stsd);
+  if(entry_count != 1) {
+    MP4_LOG("There are multiple entries in the Sample Description Box (stsd). entry_count: %u",
+	    entry_count);
+  }
+  
+  if(media->type == MP4_MEDIA_TYPE_AUDIO) {
+    // 'AudioSampleEntry'
+    // only look for coding_name, channel_count and sample_rate, for now
+            
+    __MP4_DISCARD(stsd, 4);
+    __MP4_READ(media->coding_name, stsd, 4);
+    media->coding_name[4] = '\0';
+    __MP4_DISCARD(stsd, 6 + 2 + 8);
+    __MP4_READ_U16(&media->channels, stsd);
+    __MP4_DISCARD(stsd, 4 + 2);
+    __MP4_READ_U32(&media->sample_rate, stsd);
+    media->sample_rate >>= 16;
+    
+  } else if(media->type == MP4_MEDIA_TYPE_VIDEO) {
+    // 'VideoSampleEntry'
+    // only look for codingname, width, and height, for now
+
+    __MP4_DISCARD(stsd, 4);
+    __MP4_READ(media->coding_name, stsd, 4);
+    media->coding_name[4] = '\0';
+    __MP4_DISCARD(stsd, 6 + 2 + 4 + 12);
+    __MP4_READ_U16(&media->width, stsd);
+    __MP4_READ_U16(&media->height, stsd);
+    __MP4_DISCARD(stsd, 4 + 4 + 4 + 2);
+    
+  } else {
+    MP4_LOG("Unreachable state. Update your code");
+  }
+
+  // TODO: make this an cstr-array. Just like mp4-boxs
+  if(strcmp(media->coding_name, "mp4a") == 0) {
+    media->codec = MP4_CODEC_TYPE_AAC;
+  } else if(strcmp(media->coding_name, "avc1") == 0) {
+    media->codec = MP4_CODEC_TYPE_H264;
+  } else {
+    media->codec = MP4_CODEC_TYPE_UNKNOWN;
+    MP4_LOG("Unknown coding_name: '%s'", media->coding_name);
+  }
+
+  Mp4 stsz;
+  if(!mp4_find(stbl, MP4_TYPE_STSZ, &stsz)) {
+    MP4_LOG("Can not find 'stsz' inside 'stbl'. Mp4-File is propably damaged");
+  }
+
+  // 'SampleSizeBox'
+  // only look for sample_count and sample_sizes, for now
+
+  __MP4_DISCARD(stsz, 4);
+  u32 sample_size;
+  __MP4_READ_U32(&sample_size, stsz);
+  __MP4_READ_U32(&media->sample_count, stsz);
+
+  if(sample_size != 0) {
+    MP4_LOG("Unimplemented: sample_size != 0, is not handled inside 'SampleSizeBox'");
+    return false;
+  }
+  if(media->sample_count > 0) {
+    media->sample_sizes = mp4_from(stsz.data, media->sample_count * 4);
+  }
+
+  Mp4 stco;
+  if(!mp4_find(stbl, MP4_TYPE_STCO, &stco)) {
+    MP4_LOG("Can not find 'stco' inside 'stbl'. Mp4-File is propably damaged");
+  }
+
+  // 'ChunkOffsetBox'
+  // look for entry_count and chunk_offset's
+
+  __MP4_DISCARD(stco, 4);
+  __MP4_READ_U32(&media->chunk_count, stco);
+  if(media->chunk_count > 0) {
+    media->chunk_index = 0;
+    media->chunk_offsets = mp4_from(stco.data, media->chunk_count * 4);
+  }
+
+  Mp4 stsc;
+  if(!mp4_find(stbl, MP4_TYPE_STSC, &stsc)) {
+    MP4_LOG("Can not find 'stco' inside 'stbl'. Mp4-File is propably damaged");
+  }
+
+  // 'SampleToChunkBox'
+  // look for entry_count and entries
+
+  __MP4_DISCARD(stsc, 4);
+  __MP4_READ_U32(&media->entry_count, stsc);
+  if(media->entry_count > 0) {
+    media->entries = mp4_from(stsc.data, media->entry_count * 4 * 3);
+    __MP4_DISCARD(media->entries, 4);
+    __MP4_READ_U32(&media->current_sample_count, media->entries);
+    __MP4_DISCARD(media->entries, 4);
+
+  }
+
+  // Assume that you than can find 'moof's and 'mdat's
+  media->tables_are_empty =
+    media->sample_count == 0 &&
+    media->entry_count == 0 &&
+    media->chunk_count == 0;
+
+  return true;
+}
+
+MP4_DEF bool mp4_has_audio(Mp4 m, Mp4_Media *media) {
+
+  media->type = MP4_MEDIA_TYPE_NONE;
+  while(media->type != MP4_MEDIA_TYPE_AUDIO && mp4_next_media(&m, media)) ;
+  if(media->type == MP4_MEDIA_TYPE_AUDIO) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+MP4_DEF bool mp4_next_fragmented_data(Mp4 *m, u32 track_id, u8 **data, u64 *data_len) {
+
+  u32 current_track_id;
+  while(m->len) {
+    Mp4 moof;
+    if(!mp4_find_next(m, MP4_TYPE_MOOF, &moof)) {
+      return false;
+    }
+
+    Mp4 traf;
+    if(!mp4_find(moof, MP4_TYPE_TRAF, &traf)) {
+      MP4_LOG("Exepcted 'traf' inside 'moof'");
+      return false;
+    }
+
+    Mp4 tfhd;
+    if(!mp4_find(traf, MP4_TYPE_TFHD, &tfhd)) {
+      MP4_LOG("Can not find 'tfhd' inside 'traf'. Mp4-File is propably damaged");
+      return false;
+    }
+
+    // only look for handler_type, for now
+    __MP4_DISCARD(tfhd, 4);
+    __MP4_READ_U32(&current_track_id, tfhd);
+
+    if(current_track_id == track_id) {
+      break;
+    }
+  }
+  if(!m->len) {
+    return false;
+  }
+
+  Mp4 mdat;
+  if(!mp4_find_next(m, MP4_TYPE_MDAT, &mdat)) {
+    return false;
+  }
+  *data = mdat.data;
+  *data_len = mdat.len;
+  
+  return true;
+}
+
+MP4_DEF bool mp4_media_next_data(Mp4_Media *media, u32 *offset, u64 *len) {
+  if(media->chunk_index == media->chunk_count) {
+    return false;
+  }
+
+  // Consume chunk_offset  
+  __MP4_READ_U32(offset, media->chunk_offsets);
+  media->chunk_index++; 
+
+  // Peek sample_entry
+  u32 first_chunk, sample_count;
+  bool could_peek = media->entries.len > 0;
+  if(could_peek) {
+    __MP4_READ_U32(&first_chunk, media->entries);
+    __MP4_READ_U32(&sample_count, media->entries);
+    __MP4_DISCARD(media->entries, 4);
+  }
+
+  // Look at fist 'sample_entry'.
+  if( could_peek &&
+      media->chunk_index < first_chunk ) {   // 'first_chunk' is indexed from 1
+
+    // If 'first_chunk' applies to 'chunk_index',
+    // then 'media.current_sample_count' is valid
+
+    media->entries.data -= 12; media->entries.len += 12;
+  } else {
+
+    // If 'first_chunk' does not apply to 'chunk_index',
+    // then update 'media.current_sample_count'.
+
+    media->current_sample_count = sample_count;
+  }
+
+  *len = 0;
+  u32 sample_size;
+  for(u32 i=0;i<media->current_sample_count;i++) {
+    if(media->sample_count == 0) {
+      MP4_LOG("Media.sample_count underflows. Something is wrong");
+      return false;
+    }
+
+    __MP4_READ_U32(&sample_size, media->sample_sizes);
+    media->sample_count--;
+    *len += (u64) sample_size;
+  }
+
+  return true;
+}
+
+MP4_DEF bool mp4_find(Mp4 m, Mp4_Type type, Mp4 *dest) {
+  Mp4_Type t = MP4_TYPE_NONE;
+
+  u32 size = 0;
+  while(t != type && mp4_next(&m, &size, &t)) ;
+  if(t != type) {
+    return false;
+  }
+
+  *dest = mp4_from(m.data - size + 8, size - 8);
+  return true;
+}
+
+MP4_DEF bool mp4_find_next(Mp4 *m, Mp4_Type type, Mp4 *dest) {
+  Mp4_Type t = MP4_TYPE_NONE;
+
+  u32 size = 0;
+  while(t != type && mp4_next(m, &size, &t)) ;
+  if(t != type) {
+    return false;
+  }
+
+  *dest = mp4_from(m->data - size + 8, size - 8);
+  return true;
+
+}
+
+MP4_DEF bool mp4_next(Mp4 *m, u32 *size, Mp4_Type *t) {
+
+  if(m->len < 8) {
+    return false;
+  }
+
+  // Get Box-Size
+  memcpy(size, m->data, 4);
+  *size = mp4_swap_u32(*size);
+
+  // Get Box-Name
+  Mp4_Word word;
+  memcpy(word, m->data + 4, 4);
+
+  // Advance
+  m->data += *size;
+  m->len  -= *size;    
+
+  // Lookup Box-Name
+  bool found = false;
+  for(u64 i=0;!found && i<mp4_box_names_len;i++) {
+    if(memcmp(mp4_box_names[i], word, 4) == 0) {
+      *t = (Mp4_Type) i;
+      found = true;
+    }
+  }
+
+  if(!found) {
+    MP4_LOG("Unknown MP4-Box: '%.*s'", 4, word);
+  }
+  
+  return found;
+}
+
+#endif // MP4_IMPLEMENTATION
+
+#endif // MP4_H
+#endif // MP4_DISABLE
+
+#ifdef SPECTRUM_ENABLE
+
+#ifndef SPECTRUM_H
+#define SPECTRUM_H
+
+#include <string.h>
+#include <math.h>
+#include <assert.h>
+
+#ifndef SPECTRUM_DEF
+#  define SPECTRUM_DEF static inline
+#endif // SPECTRUM_DEF
+
+#define SPECTRUM_N 8192
+#ifndef PI
+#  define PI 3.141592653589793f
+#endif //PI
+
+typedef struct{
+  float real;
+  float imag;
+}Spectrum_Complex;
+
+SPECTRUM_DEF Spectrum_Complex spectrum_complex_add(Spectrum_Complex za, Spectrum_Complex zb);
+SPECTRUM_DEF Spectrum_Complex spectrum_complex_sub(Spectrum_Complex za, Spectrum_Complex zb);
+SPECTRUM_DEF Spectrum_Complex spectrum_complex_mul(Spectrum_Complex za, Spectrum_Complex zb);
+
+typedef struct{
+  float in_raw[SPECTRUM_N];
+  float in_win[SPECTRUM_N];
+  Spectrum_Complex out_raw[SPECTRUM_N];
+  float out_log[SPECTRUM_N];
+  float out_smooth[SPECTRUM_N];
+  float out_smear[SPECTRUM_N];
+
+  size_t m;
+}Spectrum;
+
+SPECTRUM_DEF void spectrum_push(Spectrum *s, float frame);
+SPECTRUM_DEF void spectrum_analyze(Spectrum *s, float dt);
+
+SPECTRUM_DEF void spectrum_fft(float in[], size_t stride, Spectrum_Complex out[], size_t n);
+SPECTRUM_DEF float spectrum_amp(Spectrum_Complex z);
+
+#ifdef SPECTRUM_IMPLEMENTATION
+
+
+SPECTRUM_DEF Spectrum_Complex spectrum_complex_add(Spectrum_Complex za, Spectrum_Complex zb) {
+  float a = za.real;
+  float b = za.imag;
+  float c = zb.real;
+  float d = zb.imag;
+
+  return (Spectrum_Complex) { .real = (a+c), .imag = (b+d)};
+}
+
+SPECTRUM_DEF Spectrum_Complex spectrum_complex_sub(Spectrum_Complex za, Spectrum_Complex zb) {
+  float a = za.real;
+  float b = za.imag;
+  float c = zb.real;
+  float d = zb.imag;
+
+  return (Spectrum_Complex) { .real = (a-c), .imag = (b-d)};
+  
+}
+
+SPECTRUM_DEF Spectrum_Complex spectrum_complex_mul(Spectrum_Complex za, Spectrum_Complex zb) {
+  float a = za.real;
+  float b = za.imag;
+  float c = zb.real;
+  float d = zb.imag;
+
+  return (Spectrum_Complex) { .real = (a*c - b*d), .imag = (a*d + b*c)};
+}
+
+/////////////////////////////////////////////////////////////////////////////////
+
+SPECTRUM_DEF void spectrum_push(Spectrum *s, float frame) {
+  memmove(s->in_raw, s->in_raw + 1, (SPECTRUM_N - 1)*sizeof(s->in_raw[0]));
+  s->in_raw[SPECTRUM_N-1] = frame;
+}
+
+SPECTRUM_DEF void spectrum_analyze(Spectrum *s, float dt) {
+  // Apply the Hann Window on the Input - https://en.wikipedia.org/wiki/Hann_function
+  for (size_t i = 0; i < SPECTRUM_N; ++i) {
+    float t = (float)i/(SPECTRUM_N - 1);
+    float hann = 0.5 - 0.5*cosf(2*PI*t);
+    s->in_win[i] = s->in_raw[i]*hann;
+  }
+
+  // FFT
+  spectrum_fft(s->in_win, 1, s->out_raw, SPECTRUM_N);
+
+  // "Squash" into the Logarithmic Scale
+  float step = 1.06;
+  float lowf = 1.0f;
+  size_t m = 0;
+  float max_amp = 1.0f;
+  for (float f = lowf; (size_t) f < SPECTRUM_N/2; f = ceilf(f*step)) {
+    float f1 = ceilf(f*step);
+    float a = 0.0f;
+    for (size_t q = (size_t) f; q < SPECTRUM_N/2 && q < (size_t) f1; ++q) {
+      float b = spectrum_amp(s->out_raw[q]);
+      if (b > a) a = b;
+    }
+    if (max_amp < a) max_amp = a;
+    s->out_log[m++] = a;
+  }
+
+  // Normalize Frequencies to 0..1 range
+  for (size_t i = 0; i < m; ++i) {
+    s->out_log[i] /= max_amp;
+  }
+
+  // Smooth out and smear the values
+  for (size_t i = 0; i < m; ++i) {
+    float smoothness = 9;
+    if(isnan(s->out_smooth[i])) s->out_smooth[i] = 0;
+    s->out_smooth[i] += (s->out_log[i] - s->out_smooth[i])*smoothness*dt;
+    float smearness = 3;
+    s->out_smear[i] += (s->out_smooth[i] - s->out_smear[i])*smearness;
+  }
+
+  s->m = m;
+}
+
+SPECTRUM_DEF void spectrum_fft(float in[], size_t stride, Spectrum_Complex out[], size_t n) {
+  assert(n > 0);
+
+  if (n == 1) {
+    out[0].real = in[0];
+    out[0].imag = 0.0f;
+    return;
+  }
+
+  spectrum_fft(in, stride*2, out, n/2);
+  spectrum_fft(in + stride, stride*2,  out + n/2, n/2);
+
+  for (size_t k = 0; k < n/2; ++k) {
+    float t = (float)k/n;
+    float x = -2*PI*t;
+    Spectrum_Complex v =
+      spectrum_complex_mul((Spectrum_Complex) { .real=cosf(x), .imag=sinf(x) }, out[k + n/2]);
+    Spectrum_Complex e = out[k];
+    out[k]       = spectrum_complex_add(e, v);
+    out[k + n/2] = spectrum_complex_sub(e, v);
+  }
+}
+
+SPECTRUM_DEF float spectrum_amp(Spectrum_Complex z) {
+  float a = z.real;
+  float b = z.imag;
+  return logf(a*a + b*b);
+}
+
+
+#endif // SPECTRUM_IMPLEMENTATION
+
+#endif // SPECTRUM_H
+#endif // SPECTRUM_DISABLE
+
+#ifdef STRING_ENABLE
+
+#ifndef STRING_H
+#define STRING_H
+
+#ifndef TYPES_H
+#define TYPES_H
+
+#include <stdint.h>
+#include <stdlib.h>
+#include <stdbool.h>
+
+typedef uint8_t u8;
+typedef char s8; // because of mingw warning not 'int8_t'
+typedef uint16_t u16;
+typedef int16_t s16;
+typedef uint32_t u32;
+typedef int32_t s32;
+typedef uint64_t u64;
+typedef int64_t s64;
+
+typedef float f32;
+typedef double f64;
+
+#define return_defer(n) do{			\
+    result = (n);				\
+    goto defer;					\
+  }while(0)
+
+#define errorf(...) do{						\
+    fflush(stdout);						\
+    fprintf(stderr, "%s:%d:ERROR: ", __FILE__, __LINE__);	\
+    fprintf(stderr,  __VA_ARGS__ );				\
+    fprintf(stderr, "\n");					\
+    fflush(stderr);						\
+  }while(0)
+
+#define panicf(...) do{						\
+    errorf(__VA_ARGS__);					\
+    exit(1);							\
+  }while(0)
+
+#endif // TYPES_H
+
+#ifndef STRING_DEF
+#  define STRING_DEF static inline
+#endif // STRING_DEF
+
+typedef struct{
+  const char *data;
+  u64 len;
+}string;
+
+
+#define str_fmt "%.*s"
+#define str_arg(s) (int) (s).len, (s).data
+
+#define string_from(d, l) (string) { (d), (l)}
+#define string_from_cstr(cstr) (string) { (cstr), strlen(cstr) }
+#define string_from_cstr2(cstr, cstr_len) (string) { (cstr), (cstr_len) }
+#define string_to_cstr(s) ((char *) (memcpy(memset(_alloca((s).len + 1), 0, s.len + 1), (s).data, (s).len)) )
+string string_from_u64(u64 n);
+
+#define string_free(s) free((char *) (s).data)
+
+STRING_DEF bool string_copy(string s, string *d);
+STRING_DEF bool string_copy_cstr(const char *cstr, string *d);
+STRING_DEF bool string_copy_cstr2(const char *cstr, u64 cstr_len, string *d);
+
+STRING_DEF s32 string_index_of(string s, const char *needle);
+STRING_DEF s32 string_index_of_off(string s, u64 off, const char *needle);
+STRING_DEF bool string_substring(string s, u64 start, u64 len, string *d);
+STRING_DEF bool string_chop_by(string *s, const char *delim, string *d);
+
+#define STRING_BUILDER_DEFAULT_CAP 256
+
+typedef struct{
+  char *data;
+  u64 len;
+  u64 cap;
+}string_builder;
+
+#define string_builder_free(sb) free((sb).data);
+
+STRING_DEF bool string_builder_append(string_builder *sb, const char *data, size_t data_len);
+STRING_DEF bool string_builder_to_string(string_builder *sb, string *s);
+
+#ifdef STRING_IMPLEMENTATION
+
+#define STRING_FROM_U_CAP 32
+
+static string string_from_u64_impl(char *space, u64 n) {
+  u64 m = snprintf(space, STRING_FROM_U_CAP, "%llu", n);
+  return (string) { space, m };
+}
+
+#define string_from_u64(n) string_from_u64_impl(_alloca(STRING_FROM_U_CAP), n)
+
+STRING_DEF bool string_copy(string s, string *d) {
+  return string_copy_cstr2(s.data, s.len, d);
+}
+
+STRING_DEF bool string_copy_cstr(const char *cstr, string *d) {
+  return string_copy_cstr2(cstr, strlen(cstr), d);
+}
+
+STRING_DEF bool string_copy_cstr2(const char *cstr, u64 cstr_len, string *d) {
+  char *data = malloc(cstr_len);
+  if(!data) return false;
+  memcpy(data, cstr, cstr_len);
+  d->data = (const char *) data;
+  d->len  = cstr_len;
+  return true;
+}
+
+#define string_substring_impl(s, start, len) (string) { (s).data + start, len }
+
+static int string_index_of_impl(const char *haystack, u64 haystack_size, const char* needle, u64 needle_size) {
+  if(needle_size > haystack_size) {
+    return -1;
+  }
+  haystack_size -= needle_size;
+  u64 i, j;
+  for(i=0;i<=haystack_size;i++) {
+    for(j=0;j<needle_size;j++) {
+      if(haystack[i+j] != needle[j]) {
+	break;
+      }
+    }
+    if(j == needle_size) {
+      return (int) i;
+    }
+  }
+  return -1;
+
+}
+
+STRING_DEF s32 string_index_of_off(string s, u64 off, const char *needle) {
+
+  if(off > s.len) {
+    return -1;
+  }
+  
+  s32 pos = string_index_of_impl(s.data + off, s.len - off, needle, strlen(needle));
+  if(pos < 0) {
+    return -1;
+  }
+
+  return pos + (s32) off;
+}
+
+STRING_DEF s32 string_index_of(string s, const char *needle) {  
+  return string_index_of_impl(s.data, s.len, needle, strlen(needle));
+}
+
+STRING_DEF bool string_chop_by(string *s, const char *delim, string *d) {
+  if(!s->len) return false;
+  
+  s32 pos = string_index_of(*s, delim);
+  if(pos < 0) pos = (int) s->len;
+    
+  if(d && !string_substring(*s, 0, pos, d))
+    return false;
+
+  if(pos == (int) s->len) {
+    *d = *s;
+    s->len = 0;
+    return true;
+  } else {
+    return string_substring(*s, pos + 1, s->len - pos - 1, s);
+  }
+
+}
+
+STRING_DEF bool string_substring(string s, u64 start, u64 len, string *d) {
+
+  if(start > s.len) {
+    return false;
+  }
+
+  if(start + len > s.len) {
+    return false;
+  }
+
+  *d = string_substring_impl(s, start, len);
+  
+  return true;
+}
+
+STRING_DEF bool string_builder_append(string_builder *sb, const char *data, size_t data_len) {
+  u64 cap = sb->cap;
+  if(cap == 0) cap = STRING_BUILDER_DEFAULT_CAP;
+  while(sb->len + data_len > cap) {
+    cap *= 2;
+  }
+  if(cap != sb->cap) {
+    sb->cap = cap;
+    sb->data = realloc(sb->data, sb->cap);
+    if(!sb->data) return false;
+  }
+  memcpy(sb->data + sb->len, data, data_len);
+  sb->len += data_len;
+  return true;
+}
+
+STRING_DEF bool string_builder_to_string(string_builder *sb, string *d) {
+  return string_copy_cstr2(sb->data, sb->len, d);
+}
+
+#endif // STRING_IMPLEMENTATION
+
+#endif // STRING_H
+#endif // STRING_DISABLE
+
+#ifdef THREAD_ENABLE
+
+#ifndef THREAD_H_H
+#define THREAD_H_H
+
+#ifdef _WIN32 ////////////////////////////////////////////
+#include <windows.h>
+#include <process.h>
+
+//#include <process.h>
+typedef HANDLE Thread;
+typedef HANDLE Mutex;
+//TODO implement for gcc
+#elif __GNUC__ ////////////////////////////////////////////
+#include <pthread.h>
+typedef pthread_t Thread;
+typedef pthread_mutex_t Mutex;
+#endif
+
+#include <stdint.h> // for uintptr_t
+
+int thread_create(Thread *id, void* (*function)(void *), void *arg);
+void thread_join(Thread id);
+void thread_sleep(int ms);
+
+int mutex_create(Mutex* mutex);
+void mutex_lock(Mutex mutex);
+void mutex_release(Mutex mutex);
+
+#ifdef THREAD_IMPLEMENTATION
+
+#ifdef _WIN32 ////////////////////////////////////////////
+
+int thread_create(Thread *id, void* (*function)(void *), void *arg) {
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+#endif //__GNUC__
+    uintptr_t ret = _beginthread((_beginthread_proc_type) (void *) function, 0, arg);
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif //__GNUC__
+
+    if((long int) ret == -1L) {
+	return 0;
+    }
+
+    *id = (HANDLE) (uintptr_t) ret;
+
+    return 1;
+}
+
+void thread_join(Thread id) {
+    WaitForSingleObject(id, INFINITE);
+    CloseHandle(id);
+}
+
+void thread_sleep(int ms) {
+    Sleep(ms);
+}
+
+int mutex_create(Mutex* mutex) {
+    *mutex = CreateMutexW(NULL, FALSE, NULL);
+    return *mutex != NULL;
+}
+
+void mutex_lock(Mutex mutex) {
+    WaitForSingleObject(mutex, INFINITE);
+}
+
+void mutex_release(Mutex mutex) {
+    ReleaseMutex(mutex);
+}
+
+//TODO implement for gcc
+#elif __GNUC__ ////////////////////////////////////////////
+
+int thread_create(Thread *id, void* (*function)(void *), void *arg) {
+    return pthread_create(id, NULL, function, arg) == 0;
+}
+
+void thread_join(Thread id) {
+    pthread_join(id, NULL);
+}
+
+void thread_sleep(int ms) {
+    //TOOD: proper sleep_time if ms is longer than a second
+    struct timespec sleep_time;
+    if(ms < 1000) {
+	sleep_time.tv_sec = 0;
+	sleep_time.tv_nsec = ms * 1000000;    
+    } else {
+	sleep_time.tv_sec = ms / 1000;
+	sleep_time.tv_nsec = 0;
+    }
+    if(nanosleep(&sleep_time, NULL) == -1) {
+	return;
+    }
+}
+
+int mutex_create(Mutex *mutex) {
+  if(pthread_mutex_init(mutex, NULL) != 0) {
+    return 0;
+  }
+
+  return 1;
+}
+
+void mutex_lock(Mutex mutex) {
+  pthread_mutex_lock(&mutex);
+}
+
+void mutex_release(Mutex mutex) {
+  pthread_mutex_unlock(&mutex);
+}
+
+
+#endif //__GNUC__
+
+#endif //THREAD_IMPLEMENTATION
+
+
+#endif //THREAD_H_H
+#endif // THREAD_DISABLE
+
+#ifdef TYPES_ENABLE
+
+#ifndef TYPES_H
+#define TYPES_H
+
+#include <stdio.h>
+#include <stdint.h>
+
+typedef uint8_t u8;
+typedef char s8; // because of mingw warning not 'int8_t'
+typedef uint16_t u16;
+typedef int16_t s16;
+typedef uint32_t u32;
+typedef int32_t s32;
+typedef uint64_t u64;
+typedef int64_t s64;
+
+typedef float f32;
+typedef double f64;
+
+#define return_defer(n) do{			\
+    result = (n);				\
+    goto defer;					\
+  }while(0)
+
+#define errorf(...) do{						\
+    fflush(stdout);						\
+    fprintf(stderr, "%s:%d:ERROR: ", __FILE__, __LINE__);	\
+    fprintf(stderr,  __VA_ARGS__ );				\
+    fprintf(stderr, "\n");					\
+    fflush(stderr);						\
+  }while(0)
+
+#define panicf(...) do{						\
+    errorf(__VA_ARGS__);					\
+    exit(1);							\
+  }while(0)
+
+#endif // TYPES_H
+#endif // TYPES_DISABLE
+
+#ifdef WAV_ENABLE
+
+#ifndef WAV_H
+#define WAV_H
+
+//https://de.wikipedia.org/wiki/RIFF_WAVE
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <stdbool.h>
+
+#ifndef WAV_DEF
+#  define WAV_DEF static inline
+#endif //WAV_DEF
+
+typedef struct {
+  int8_t chunkID[4];  // 'RIFF'
+  uint32_t chunkSize;
+  int8_t riffType[4]; // 'WAVE'
+  int8_t fmtID[4];    // 'fmt '
+  uint32_t fmtChunkSize;
+  uint16_t wFormatTag;
+  uint16_t channels; // wChannels
+  uint32_t sample_rate; // dwSamplesPerSec
+  uint32_t dwAvgBytesPerSec;
+  uint16_t wBlockAlign;
+  uint16_t wBitsPerSample;
+  uint8_t data[4];  // 'data'
+  uint32_t dataSize;
+} Wav_Header;
+
+typedef Wav_Header Wav;
+
+// Public:
+WAV_DEF bool wav_slurp(Wav *wav_header, const char *filepath, unsigned char **data, uint32_t *size);
+WAV_DEF bool wav_read(Wav *wav_header, unsigned char *memory, size_t memory_len, unsigned char **data, uint32_t *size);
+
+#ifdef WAV_IMPLEMENTATION
+
+WAV_DEF bool wav_slurp(Wav *wav_header, const char *filepath, unsigned char **data, uint32_t *size) {
+  FILE* f = fopen(filepath, "rb");
+  if(!f) {
+    return false;
+  }
+
+  size_t n = fread(wav_header, sizeof(*wav_header), 1, f);
+  if(n != 1) {
+    fclose(f);
+    return false;
+  }
+
+  *size = (uint32_t) wav_header->chunkSize - sizeof(*wav_header);
+  *data = (unsigned char *) malloc(*size);
+  if(!(*data)) {
+    fclose(f);
+    return false;
+  }
+  size_t m = fread(*data, 1, *size, f);
+  if(m != *size) {
+    fclose(f);
+    return false;
+  }
+
+  fclose(f);
+  return true;
+}
+
+WAV_DEF bool wav_read(Wav *wav_header, unsigned char *memory, size_t memory_len, unsigned char **data, uint32_t *size) {
+
+  size_t header_size = sizeof(*wav_header);
+
+  if(memory_len < header_size) {
+    return false;
+  }
+  
+  memcpy(wav_header, memory, header_size);
+  
+  memory += header_size;
+  memory_len -= header_size;
+
+  *size = (uint32_t) wav_header->chunkSize - header_size;
+  *data = memory;  
+
+  return true;
+}
+
+#endif //WAV_IMPLEMENTATION
+
+#endif //WAV_H
+#endif // WAV_DISABLE
+
+#ifdef WINDOW_ENABLE
+
+#ifndef WINDOW_H
+#define WINDOW_H
+
+// win32
+//   msvc : user32.lib gdi32.lib opengl32.lib (shell32.lib)
+//   mingw:
+
+#ifndef WINDOW_LOG
+#  ifndef WINDOW_QUIET
+#    include <stdio.h>
+#    define WINDOW_LOG(...) fprintf(stderr, "WINDOW: "__VA_ARGS__);
+#  else
+#    define WINDOW_LOG(...)
+#  endif // WINDOW QUIET
+#endif // WINDOW_LOG
+
+#include <stdbool.h>
+#include <math.h>
+
+#include <windows.h>
+#include <shellapi.h>
+#include <GL/GL.h>
+
+#ifndef WINDOW_DEF
+#  define WINDOW_DEF static inline
+#endif //WINDOW_DEF
+
+#ifndef PI
+#  define PI 3.141592653589793f
+#endif //PI
+
+#define WINDOW_DOUBLE_CLICK_TIME_MS 500
+
+#define WINDOW_BACKSPACE 8
+#define WINDOW_ESCAPE 27
+#define WINDOW_SPACE 32
+
+typedef enum{
+  WINDOW_EVENT_NONE = 0,
+  WINDOW_EVENT_KEYPRESS,
+  WINDOW_EVENT_KEYRELEASE,
+  WINDOW_EVENT_MOUSEPRESS,
+  WINDOW_EVENT_MOUSERELEASE,
+  WINDOW_EVENT_MOUSEWHEEL,
+  WINDOW_EVENT_FILEDROP,
+}Window_Event_Type;
+
+typedef struct{
+  MSG msg;
+  Window_Event_Type type;
+  union{
+    char key;
+    long long value;
+    int amount;
+  }as;
+}Window_Event;
+
+typedef struct{
+  HDROP h_drop;
+  char path[MAX_PATH];
+
+  int count;
+  int index;
+}Window_Dragged_Files;
+
+typedef struct{
+  HWND hwnd;
+  HDC dc;
+  RECT rect;
+  POINT point;
+  LARGE_INTEGER performance_frequency;
+  LARGE_INTEGER time;
+  bool is_shift_down;
+  
+  double dt;
+  int running;
+  int width, height;
+}Window;
+
+typedef struct{
+  HANDLE handle;
+}Window_Clipboard;
+
+#define WINDOW_RUNNING       0x1
+#define WINDOW_NOT_RESIZABLE 0x2
+#define WINDOW_DRAG_N_DROP   0x4
+#define WINDOW_FULLSCREEN    0x8
+
+WINDOW_DEF bool window_init(Window *w, int width, int height, const char *title, int flags);
+WINDOW_DEF bool window_set_vsync(Window *w, bool use_vsync);
+WINDOW_DEF bool window_peek(Window *w, Window_Event *event);
+WINDOW_DEF bool window_get_mouse_position(Window *w, int *width, int *height);
+WINDOW_DEF void window_swap_buffers(Window *w);
+WINDOW_DEF bool window_toggle_fullscreen(Window *w);
+WINDOW_DEF void window_free(Window *w);
+WINDOW_DEF bool window_show_cursor(Window *w, bool show);
+
+WINDOW_DEF bool window_dragged_files_init(Window_Dragged_Files *files, Window_Event *event);
+WINDOW_DEF bool window_dragged_files_next(Window_Dragged_Files *files, char **path);
+WINDOW_DEF void window_dragged_files_free(Window_Dragged_Files *files);
+
+WINDOW_DEF bool window_clipboard_init(Window_Clipboard *clipboard, Window *w, char **text);
+WINDOW_DEF bool window_clipboard_set(Window *w, const char *text, size_t text_len);
+WINDOW_DEF void window_clipboard_free(Window_Clipboard *clipboard);
+
+WINDOW_DEF bool window_compile_shader(GLuint *shader, GLenum shader_type, const char *shader_source);
+WINDOW_DEF bool window_link_program(GLuint *program, GLuint vertex_shader, GLuint fragment_shader);
+
+#ifndef WINDOW_NO_RENDERER
+
+typedef struct{
+  float x, y;
+}Window_Renderer_Vec2f;
+
+WINDOW_DEF Window_Renderer_Vec2f window_renderer_vec2f(float x, float y);
+
+typedef struct{
+  float x, y, z, w;
+}Window_Renderer_Vec4f;
+
+WINDOW_DEF Window_Renderer_Vec4f window_renderer_vec4f(float x, float y, float z, float w);
+
+typedef struct{
+  Window_Renderer_Vec2f position;
+  Window_Renderer_Vec4f color;
+  Window_Renderer_Vec2f uv;
+}Window_Renderer_Vertex;
+
+#define WINDOW_RENDERER_VERTEX_ATTR_POSITION 0
+#define WINDOW_RENDERER_VERTEX_ATTR_COLOR 1
+#define WINDOW_RENDERER_VERTEX_ATTR_UV 2
+
+#define WINDOW_RENDERER_CAP 1024
+
+typedef struct{
+  GLuint vao, vbo;
+  GLuint vertex_shader, fragment_shader;
+  GLuint program;
+  
+  GLuint textures;
+  unsigned int images_count;
+
+#ifdef WINDOW_STB_TRUETYPE
+  float font_height;
+  stbtt_bakedchar font_cdata[96]; // ASCII 32..126 is 95 glyphs
+#endif //WINDOW_STB_TRUETYPE
+    
+  int font_index;
+  int tex_index;
+
+  float width, height;
+  Window_Renderer_Vec4f background;
+
+  Window_Renderer_Vertex verticies[WINDOW_RENDERER_CAP];
+  int verticies_count;
+
+  //Imgui things
+  Window_Renderer_Vec2f input;
+  Window_Renderer_Vec2f pos;
+  bool clicked;
+  bool released;
+}Window_Renderer;
+
+static Window_Renderer_Vec4f WHITE = {1, 1, 1, 1};
+static Window_Renderer_Vec4f RED   = {1, 0, 0, 1};
+static Window_Renderer_Vec4f BLUE  = {0, 0, 1, 1};
+static Window_Renderer_Vec4f GREEN = {0, 1, 0, 1};
+static Window_Renderer_Vec4f BLACK = {0, 0, 0, 1};
+
+#define vec2f(x, y) window_renderer_vec2f((x), (y))
+#define vec4f(x, y, z, w) window_renderer_vec4f((x), (y), (z), (w))
+#define Vec4f Window_Renderer_Vec4f
+#define Vec2f Window_Renderer_Vec2f
+
+#define draw_triangle window_renderer_triangle
+#define draw_solid_triangle window_renderer_solid_triangle
+#define draw_solid_rect window_renderer_solid_rect
+#define draw_solid_rounded_rect window_renderer_solid_rounded_rect
+#define draw_solid_rounded_shaded_rect window_renderer_solid_rounded_shaded_rect
+#define draw_solid_rect_angle window_renderer_solid_rect_angle
+#define push_texture window_renderer_push_texture
+#define draw_texture window_renderer_texture
+#define draw_texture_colored window_renderer_texture_colored
+#define draw_solid_circle window_renderer_solid_circle
+
+#define button window_renderer_button
+#define texture_button window_renderer_texture_button
+#define texture_button_ex window_renderer_texture_button_ex
+
+#ifdef WINDOW_STB_TRUETYPE
+#  define push_font window_renderer_push_font
+#  define draw_text(cstr, pos, factor) window_renderer_text((cstr), strlen((cstr)), (pos), (factor), (WHITE))
+#  define draw_text_colored(cstr, pos, factor, color) window_renderer_text((cstr), strlen((cstr)), (pos), (factor), (color))
+#  define draw_text_len(cstr, cstr_len, pos, factor) window_renderer_text((cstr), (cstr_len), (pos), (factor), (WHITE))
+#  define draw_text_len_colored(cstr, cstr_len, pos, factor, color) window_renderer_text((cstr), (cstr_len), (pos), (factor), (color))
+
+#  define measure_text(cstr, factor, size) window_renderer_measure_text((cstr), strlen((cstr)), (factor), (size));
+#  define measure_text_len(cstr, cstr_len, factor, size) window_renderer_measure_text((cstr), (cstr_len), (factor), (size));
+
+#  define draw_text_wrapped window_renderer_text_wrapped
+#endif //WINDOW_STB_TRUETYPE
+
+#ifdef WINDOW_STB_IMAGE
+#  define push_image window_renderer_push_image
+#endif //WINDOW_STB_IMAGE
+
+WINDOW_DEF bool window_renderer_init(Window_Renderer *r);
+WINDOW_DEF void window_renderer_free();
+
+WINDOW_DEF void window_renderer_begin(int width, int height);
+WINDOW_DEF void window_renderer_set_color(Window_Renderer_Vec4f color);
+WINDOW_DEF void window_renderer_end();
+
+WINDOW_DEF void window_renderer_imgui_begin(Window *w, Window_Event *e);
+WINDOW_DEF void window_renderer_imgui_update(Window *w, Window_Event *e);
+WINDOW_DEF void window_renderer_imgui_end();
+
+// Primitives
+
+WINDOW_DEF void window_renderer_vertex(Window_Renderer_Vec2f p, Window_Renderer_Vec4f c, Window_Renderer_Vec2f uv);
+WINDOW_DEF void window_renderer_triangle(Window_Renderer_Vec2f p1, Window_Renderer_Vec2f p2, Window_Renderer_Vec2f p3, Window_Renderer_Vec4f c1, Window_Renderer_Vec4f c2, Window_Renderer_Vec4f c3, Window_Renderer_Vec2f uv1, Window_Renderer_Vec2f uv2, Window_Renderer_Vec2f uv3);
+WINDOW_DEF void window_renderer_solid_triangle(Window_Renderer_Vec2f p1, Window_Renderer_Vec2f p2, Window_Renderer_Vec2f p3, Window_Renderer_Vec4f c);
+WINDOW_DEF void window_renderer_quad(Window_Renderer_Vec2f p1, Window_Renderer_Vec2f p2, Window_Renderer_Vec2f p3, Window_Renderer_Vec2f p4,Window_Renderer_Vec4f c1,Window_Renderer_Vec4f c2,Window_Renderer_Vec4f c3,Window_Renderer_Vec4f c4, Window_Renderer_Vec2f uv1, Window_Renderer_Vec2f uv2, Window_Renderer_Vec2f uv3, Window_Renderer_Vec2f uv4);
+WINDOW_DEF void window_renderer_solid_rect(Window_Renderer_Vec2f pos, Window_Renderer_Vec2f size,Window_Renderer_Vec4f color);
+WINDOW_DEF void window_renderer_solid_rounded_rect(Vec2f pos, Vec2f size, float radius, int parts, Vec4f color);
+WINDOW_DEF void window_renderer_solid_rounded_shaded_rect(Window_Renderer_Vec2f pos, Window_Renderer_Vec2f size, float radius, int parts, float shade_px, Window_Renderer_Vec4f color);
+WINDOW_DEF void window_renderer_solid_rect_angle(Window_Renderer_Vec2f pos, Window_Renderer_Vec2f size, float angle, Window_Renderer_Vec4f color);
+WINDOW_DEF bool window_renderer_push_texture(int width, int height, const void *data, bool grey, unsigned int *index);
+WINDOW_DEF void window_renderer_texture(unsigned int texture, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec2f uvp, Window_Renderer_Vec2f uvs);
+WINDOW_DEF void window_renderer_texture_colored(unsigned int texture, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec2f uvp, Window_Renderer_Vec2f uvs, Window_Renderer_Vec4f c);
+WINDOW_DEF void window_renderer_solid_circle(Window_Renderer_Vec2f pos, float start_angle, float end_angle, float radius, int parts, Window_Renderer_Vec4f color);
+
+//Imgui-things
+WINDOW_DEF bool window_renderer_button(Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f c);
+WINDOW_DEF bool window_renderer_texture_button(unsigned int texture, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s);
+WINDOW_DEF bool window_renderer_texture_button_ex(unsigned int texture, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f c, Window_Renderer_Vec2f uvp, Window_Renderer_Vec2f uvs);
+
+WINDOW_DEF bool window_renderer_slider(Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f knot_color, Window_Renderer_Vec4f color, float value, float *cursor);
+
+#ifdef WINDOW_STB_TRUETYPE
+WINDOW_DEF bool window_renderer_push_font(const char *filepath, float pixel_height);
+WINDOW_DEF void window_renderer_measure_text(const char *cstr, size_t cstr_len, float scale, Vec2f *size);
+WINDOW_DEF void window_renderer_text(const char *cstr, size_t cstr_len, Window_Renderer_Vec2f pos, float scale, Window_Renderer_Vec4f color);
+WINDOW_DEF void window_renderer_text_wrapped(const char *cstr, size_t cstr_len, Window_Renderer_Vec2f *pos, Window_Renderer_Vec2f size, float scale, Window_Renderer_Vec4f color);
+
+WINDOW_DEF bool window_renderer_text_button(const char *cstr, size_t cstr_len, float scale, Window_Renderer_Vec4f text_color, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f c);
+#endif //WINDOW_STB_TRUETYPE
+
+#ifdef WINDOW_STB_IMAGE
+WINDOW_DEF bool window_renderer_push_image(const char *filepath, int *width, int *height, unsigned int *index);
+#endif //WINDOW_STB_IMAGE
+
+#endif //WINDOW_NO_RENDERER
+
+
+// opengl - functions / types / definitions
+#define GL_TEXTURE0 0x84C0
+#define GL_TEXTURE1 0x84C1
+#define GL_TEXTURE2 0x84C2
+#define GL_TEXTURE3 0x84C3
+#define GL_TEXTURE4 0x84C4
+#define GL_TEXTURE5 0x84C5
+
+#define GL_ARRAY_BUFFER 0x8892
+#define GL_DYNAMIC_DRAW 0x88E8
+#define GL_ACTIVE_UNIFORMS 0x8B86
+
+#define GL_FRAGMENT_SHADER 0x8B30
+#define GL_VERTEX_SHADER 0x8B31
+#define GL_COMPILE_STATUS 0x8B81
+#define GL_LINK_STATUS 0x8B82
+#define GL_CLAMP_TO_EDGE 0x812F
+#define GL_RGB_INTEGER 0x8D98
+#define GL_UNSIGNED_INT_8_8_8_8_REV 0x8367
+#define GL_MULTISAMPLE  0x809D
+#define GL_SAMPLES 0x80A9
+
+#define GL_BGRA 0x80E1
+#define GL_RGB 0x1907
+#define GL_BGR 0x80E0
+
+#define GL_MULTISAMPLE 0x809D
+#define GL_MULTISAMPLE_ARB 0x809D
+#define GL_MULTISAMPLE_BIT 0x20000000
+#define GL_MULTISAMPLE_BIT_ARB 0x20000000
+#define GL_MULTISAMPLE_FILTER_HINT_NV 0x8534
+#define GL_SAMPLE_ALPHA_TO_COVERAGE 0x809E
+#define GL_SAMPLE_BUFFERS 0x80A8
+#define GL_SAMPLES 0x80A9
+
+typedef ptrdiff_t GLsizeiptr;
+typedef ptrdiff_t GLintptr;
+typedef char GLchar;
+
+void glActiveTexture(GLenum texture);
+void glGenVertexArrays(GLsizei n, GLuint *arrays);
+void glBindVertexArray(GLuint array);
+void glGenBuffers(GLsizei n, GLuint *buffers);
+void glBindBuffer(GLenum target, GLuint buffer);
+void glBufferData(GLenum target, GLsizeiptr size, const void * data, GLenum usage);
+void glEnableVertexAttribArray(GLuint index);
+void glVertexAttribPointer(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void * pointer);
+GLuint glCreateShader(GLenum shaderType);
+void glShaderSource(GLuint shader, GLsizei count, const GLchar **_string, const GLint *length);
+void glCompileShader(GLuint shader);
+void glGetShaderiv(GLuint shader, GLenum pname, GLint *params);
+void glGetShaderInfoLog(GLuint shader, GLsizei maxLength, GLsizei *length, GLchar *infoLog);
+GLuint glCreateProgram(void);
+void glAttachShader(GLuint program, GLuint shader);
+void glLinkProgram(GLuint program);
+void glGetProgramInfoLog(GLuint program, GLsizei maxLength, GLsizei *length, GLchar *infoLog);
+void glGetProgramiv(GLuint program, GLenum pname, GLint *params);
+void glUseProgram(GLuint program);
+void glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void * data);
+void glUniform2f(GLint location, GLfloat v0, GLfloat v1);
+void glUniform1f(GLint location, GLfloat v0);
+void glUniform1fv(GLint location, GLsizei count, const GLfloat *value);
+void glUniform2fv(GLint location, GLsizei count, const GLfloat *value);
+void glUniform1i(GLint location, GLint v0);
+GLint glGetUniformLocation(GLuint program, const GLchar *name);
+void glGetActiveUniform(GLuint program, GLuint index, GLsizei bufSize, GLsizei *length, GLint *size, GLenum *type, GLchar *name);
+void glGetUniformfv(GLuint program, GLint location, GLfloat *params);
+void glGetUniformiv(GLuint program, GLint location, GLsizei bufSize, GLint *params);
+void glSampleCoverage(GLfloat value, GLboolean invert);
+int wglSwapIntervalEXT(GLint interval);
+
+#ifdef WINDOW_IMPLEMENTATION
+
+#ifndef WINDOW_NO_RENDERER
+static Window_Renderer window_renderer;
+static bool window_renderer_inited = false;
+#endif //WINDOW_NO_RENDERER
+
+LRESULT CALLBACK Window_Implementation_WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
+
+  if(message == WM_CLOSE ||
+     message == WM_DESTROY) {
+    Window *w = (Window *) GetWindowLongPtr(hWnd, 0);
+    if(w != NULL) {
+      w->running = 0;
+    }
+    PostQuitMessage(0);
+    return 0;
+  } else {
+    return DefWindowProc(hWnd, message, wParam, lParam);
+  }
+  
+}
+
+WINDOW_DEF void window_win32_opengl_init();
+
+WINDOW_DEF bool window_init(Window *w, int width, int height, const char *title, int flags) {
+
+  STARTUPINFO startupInfo;
+  GetStartupInfo(&startupInfo);
+  HMODULE hInstance = GetModuleHandle(NULL);
+  DWORD nCmdShow = startupInfo.wShowWindow;
+
+#if 1
+  HINSTANCE user32Lib = LoadLibrary("user32.dll");
+  if(!user32Lib) {
+    return false;
+  }
+
+  PROC setProcessDPIAware = GetProcAddress(user32Lib, "SetProcessDPIAware");
+  if(!setProcessDPIAware) {
+    return false;
+  }
+  setProcessDPIAware();
+
+  FreeLibrary(user32Lib);
+#else
+  SetProcessDPIAware();
+#endif
+
+  WNDCLASSEX wc = {0};
+  wc.cbSize = sizeof(WNDCLASSEX);
+  wc.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
+  wc.lpfnWndProc = Window_Implementation_WndProc;
+  wc.hInstance = hInstance;
+  wc.lpszClassName = title;
+  wc.cbWndExtra = sizeof(LONG_PTR);
+  wc.cbClsExtra = 0;
+  wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+  
+  HICON icon = LoadIcon(hInstance, MAKEINTRESOURCE(1));
+  wc.hIcon = icon; // ICON when tabbing
+  wc.hIconSm = icon; //ICON default
+  
+  if(!RegisterClassEx(&wc)) {
+    return false;
+  }
+
+  int screen_width = GetSystemMetrics(SM_CXSCREEN);
+  int screen_height = GetSystemMetrics(SM_CYSCREEN);
+
+  // WS_THICKFRAME :: resizable
+  // WS_MAXIMIZEBOX :: maximizable
+
+#define WINDOW_STYLE (WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX)
+#define WINDOW_RESIZABLE_STYLE (WS_THICKFRAME | WS_MAXIMIZEBOX)
+
+  DWORD style = WINDOW_STYLE;
+  if(!(flags & WINDOW_NOT_RESIZABLE)) {
+    style |= WINDOW_RESIZABLE_STYLE;
+  } else {
+    width -= 10;
+    height -= 10;
+  }
+
+  //add space  
+  width += 16;
+  height += 39;
+
+  DWORD window_flags = 0;
+  if((flags & WINDOW_DRAG_N_DROP)) {
+    window_flags |= WS_EX_ACCEPTFILES;
+  }
+
+  w->hwnd = CreateWindowEx(window_flags,
+			   wc.lpszClassName,
+			   wc.lpszClassName,
+			   style,
+			   screen_width / 2 - width/2,
+			   screen_height / 2 - height/2,
+			   width,
+			   height,
+			   NULL,
+			   NULL,
+			   hInstance,
+			   NULL);
+  if(!w->hwnd) {
+    return false;
+  }
+  w->dc = GetDC(w->hwnd);
+
+  //BEGIN opengl
+  HDC w_dc = GetDC(w->hwnd);
+
+  PIXELFORMATDESCRIPTOR desired_format = {0};
+  desired_format.nSize = sizeof(desired_format);
+  desired_format.nVersion = 1;
+  desired_format.dwFlags = PFD_SUPPORT_OPENGL|PFD_DRAW_TO_WINDOW|PFD_DOUBLEBUFFER;
+  desired_format.cColorBits = 32;
+  desired_format.cAlphaBits = 8;
+
+  int suggested_format_index = ChoosePixelFormat(w_dc, &desired_format);
+  PIXELFORMATDESCRIPTOR suggested_format;
+  DescribePixelFormat(w_dc, suggested_format_index, sizeof(suggested_format), &suggested_format);
+  SetPixelFormat(w_dc, suggested_format_index, &suggested_format);
+  
+  HGLRC opengl_rc = wglCreateContext(w_dc);
+  if(!wglMakeCurrent(w_dc, opengl_rc)) {
+    return false;
+  }
+  ReleaseDC(w->hwnd, w_dc);
+  //END opengl
+
+  LONG_PTR lptr = {0};
+  memcpy(&lptr, &w, sizeof(w));  
+  SetWindowLongPtr(w->hwnd, 0, lptr);  
+
+  ShowWindow(w->hwnd, nCmdShow);
+  UpdateWindow(w->hwnd);
+
+  w->running = WINDOW_RUNNING;
+  w->width = width;
+  w->height = height;
+  w->is_shift_down = false;
+
+  // load non-default-opengl-functions
+  window_win32_opengl_init();
+
+#ifndef WINDOW_NO_RENDERER
+  if(!window_renderer_inited) {
+    if(!window_renderer_init(&window_renderer)) {
+      return false;	    
+    }
+	
+    window_renderer_inited = true;
+  }
+#endif //WINDOW_NO_RENDERER
+
+  // use vsync as default
+  if(!window_set_vsync(w, true)) {
+    return false;
+  }
+
+  if((flags & WINDOW_FULLSCREEN) && !window_toggle_fullscreen(w)) {
+    return false;
+  }
+
+  QueryPerformanceFrequency(&w->performance_frequency);
+  QueryPerformanceCounter(&w->time);
+  w->dt = 0;
+    
+  return true;
+}
+
+WINDOW_DEF bool window_set_vsync(Window *w, bool use_vsync) {
+  (void) w;
+  return wglSwapIntervalEXT(use_vsync ? 1 : 0);
+}
+
+static char window_german_keyboard[10] = {
+  [1] ='!',
+  [2] = '\"',
+  [3] = '§',
+  [4] = '$',
+  [5] = '%',
+  [6] = '&',
+  [7] = '/',
+  [8] = '(',
+  [9] = ')', 
+  [0] = '=',
+};
+
+WINDOW_DEF bool window_peek(Window *w, Window_Event *e) {
+    
+  MSG *msg = &e->msg;
+
+  while(true) {
+    if(!PeekMessage(msg, w->hwnd, 0, 0, PM_REMOVE)) {
+      break;
+    }
+
+    TranslateMessage(msg);
+    DispatchMessage(msg);
+
+    e->type = WINDOW_EVENT_NONE;
+
+    switch(msg->message) {
+    case WM_DROPFILES: {
+      e->type = WINDOW_EVENT_FILEDROP;
+      e->as.value = msg->wParam;
+    } break;
+    case WM_RBUTTONUP:  {
+      e->type = WINDOW_EVENT_MOUSERELEASE;
+      e->as.key = 'R';
+      ReleaseCapture();
+    } break;
+    case WM_RBUTTONDOWN: {
+      e->type = WINDOW_EVENT_MOUSEPRESS;
+      e->as.key = 'R';
+      SetCapture(w->hwnd);
+    } break;
+    case WM_LBUTTONUP: {
+      e->type = WINDOW_EVENT_MOUSERELEASE;
+      e->as.key = 'L';
+      ReleaseCapture();
+    } break;
+    case WM_LBUTTONDOWN: {
+      e->type = WINDOW_EVENT_MOUSEPRESS;
+      e->as.key = 'L';
+      SetCapture(w->hwnd);
+    } break;
+    case WM_SYSKEYDOWN:
+    case WM_SYSKEYUP:
+    case WM_KEYDOWN:
+    case WM_KEYUP: {
+      bool was_down = ((msg->lParam & (1 << 30)) != 0);
+      bool is_down = ((msg->lParam & (1 << 31)) == 0);
+
+      if(was_down != is_down) {
+
+	if(msg->wParam == VK_SHIFT) {
+	  if(was_down) {
+	    w->is_shift_down = false;
+	  } else {
+	    w->is_shift_down = true;
+	  }
+	  continue;
+	}
+	
+	char c = (char) msg->wParam;
+	if(w->is_shift_down) {
+	  if('0' <= c && c <= '9') {
+	    c = window_german_keyboard[c - '0'];
+	  }
+	} else {
+	  if('A' <= c && c <= 'Z') {
+	    c += 32;
+	  }
+	}
+	
+	e->as.key = c;
+	if(was_down) {
+	  e->type = WINDOW_EVENT_KEYRELEASE;
+	} else {
+	  e->type = WINDOW_EVENT_KEYPRESS;
+	}
+	
+      }
+      
+    } break;
+    case WM_MOUSEWHEEL:
+    case WM_MOUSEHWHEEL: {
+      e->type = WINDOW_EVENT_MOUSEWHEEL; 
+      e->as.amount = GET_WHEEL_DELTA_WPARAM(msg->wParam) / 120;//apperantly this is 120`s steps
+    } break;
+    default: {
+    } break;
+    }
+
+    
+#ifndef WINDOW_NO_RENDERER
+    window_renderer_imgui_update(w, e);
+#endif //WINDOW_NO_RENDERER
+
+    if(e->type != WINDOW_EVENT_NONE) {
+      return true;
+    }
+  }
+
+  // width, height
+  if(!(w->running & WINDOW_FULLSCREEN)) {
+    if(GetClientRect(w->hwnd, &w->rect)) {
+      w->width = (w->rect.right - w->rect.left);
+      w->height = (w->rect.bottom - w->rect.top);
+    }
+  }
+
+  //dt
+  LARGE_INTEGER time;
+  QueryPerformanceCounter(&time);
+  w->dt = ((double) time.QuadPart - (double) w->time.QuadPart)
+    * 1000
+    / (double) w->performance_frequency.QuadPart;
+  w->time = time;
+
+  //window_renderer
+#ifndef WINDOW_NO_RENDERER
+  window_renderer_imgui_begin(w, e);
+  window_renderer_begin(w->width, w->height);
+#endif // WINDOW_NO_RENDERER
+
+  return false;
+}
+
+WINDOW_DEF bool window_get_mouse_position(Window *w, int *width, int *height) {
+  if(GetCursorPos(&w->point) && ScreenToClient(w->hwnd, &w->point)) {
+    *width = w->point.x;
+    *height = w->point.y;
+    return true;
+  }
+
+  return false;
+}
+  
+WINDOW_DEF void window_swap_buffers(Window *w) {
+#ifndef WINDOW_NO_RENDERER
+  window_renderer_end();
+  window_renderer_imgui_end();
+#endif // WINDOW_NO_RENDERER
+  
+  SwapBuffers(w->dc);
+}
+
+WINDOW_DEF bool window_toggle_fullscreen(Window *w) {
+
+  DWORD style = (DWORD) GetWindowLongPtr(w->hwnd, GWL_STYLE);
+
+  if(w->running & WINDOW_FULLSCREEN) {
+
+    style &= ~WS_POPUP;
+    style |= WINDOW_STYLE; // fix this
+    if(!(w->running & WINDOW_NOT_RESIZABLE)) {
+      style |= WINDOW_RESIZABLE_STYLE;
+    }
+    w->running &= ~WINDOW_FULLSCREEN;
+    
+    SetWindowPos(w->hwnd, NULL,
+		 w->rect.left,
+		 w->rect.top,
+		 w->rect.right - w->rect.left,
+		 w->rect.bottom - w->rect.top,
+		 SWP_FRAMECHANGED);    
+  } else {    
+    if(!GetWindowRect(w->hwnd, &w->rect)) {
+      return false;
+    }
+
+    int width = GetSystemMetrics(SM_CXSCREEN);
+    int height = GetSystemMetrics(SM_CYSCREEN);
+
+    style &= ~WINDOW_STYLE;
+    if(!(w->running & WINDOW_NOT_RESIZABLE)) {
+      style &= ~WINDOW_RESIZABLE_STYLE;
+    }
+    style |= WS_POPUP;
+    w->running |= WINDOW_FULLSCREEN;
+    w->width = width;
+    w->height = height;
+
+    SetWindowPos(w->hwnd, HWND_TOP, 0, 0, width, height, SWP_FRAMECHANGED);
+  }
+
+  SetWindowLongPtr(w->hwnd, GWL_STYLE, style);
+
+  return true;
+}
+
+WINDOW_DEF void window_free(Window *w) {	
+  ReleaseDC(w->hwnd, w->dc);
+  DestroyWindow(w->hwnd);
+}
+
+WINDOW_DEF bool window_show_cursor(Window *w, bool show) {
+  (void) w;
+
+  CURSORINFO info;
+  info.cbSize = sizeof(CURSORINFO);
+  if(!GetCursorInfo(&info)) {
+    return false;
+  }
+
+  bool visible = info.flags;
+  if(show && !visible) {
+    ShowCursor(true);
+  } else if(!show && visible){
+    ShowCursor(false);
+  }
+
+  return true;
+}
+
+WINDOW_DEF bool window_dragged_files_init(Window_Dragged_Files *files, Window_Event *event) {
+  files->h_drop = (HDROP) event->as.value;
+  files->count = DragQueryFile(files->h_drop, 0xffffffff, files->path, MAX_PATH);
+  if(files->count <= 0) {
+    return false;
+  }
+  files->index = 0;
+
+  return true;
+}
+
+WINDOW_DEF bool window_dragged_files_next(Window_Dragged_Files *files, char **path) {
+  if(files->index >= files->count) {
+    return false;
+  }
+  DragQueryFile(files->h_drop, files->index++, files->path, MAX_PATH);
+  *path = files->path;
+
+  return true;
+}
+
+WINDOW_DEF void window_dragged_files_free(Window_Dragged_Files *files) {
+  DragFinish(files->h_drop);
+}
+
+WINDOW_DEF bool window_clipboard_init(Window_Clipboard *clipboard, Window *w, char **text) {
+
+  (void) w;
+  
+  if(!OpenClipboard(w->hwnd)) {
+    return false;
+  }
+  
+  clipboard->handle = GetClipboardData(CF_TEXT);
+  if(clipboard->handle == NULL) {
+    CloseClipboard();
+    return false;
+  }
+
+  *text = GlobalLock(clipboard->handle);
+  if((*text) == NULL) {
+    CloseClipboard();
+    return false;
+  }  
+  
+  return true;
+}
+
+WINDOW_DEF bool window_clipboard_set(Window *w, const char *text, size_t text_len) {
+
+  HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, text_len + 1);
+  if(!mem) {
+    return false;
+  }
+
+  char *locked_mem = GlobalLock(mem);
+  if(!locked_mem) {
+    GlobalFree(mem);
+    return false;
+  }
+
+  memcpy(locked_mem, text, text_len);
+  locked_mem[text_len] = 0;
+  
+  GlobalUnlock(locked_mem);
+
+  if(!OpenClipboard(w->hwnd)) {
+    GlobalFree(mem);
+    return false;
+  }
+
+  if(!EmptyClipboard()) {
+    GlobalFree(mem);
+    CloseClipboard();
+    return false;
+  }
+
+  if(SetClipboardData(CF_TEXT, mem) == NULL) {
+    GlobalFree(mem);
+    CloseClipboard();
+    return false;
+  }
+
+  CloseClipboard();
+  
+  return true;		
+}
+
+WINDOW_DEF void window_clipboard_free(Window_Clipboard *clipboard) {
+  GlobalUnlock(clipboard->handle);
+  CloseClipboard();  
+}
+
+WINDOW_DEF const char *window_shader_type_name(GLenum shader) {
+  switch (shader) {
+  case GL_VERTEX_SHADER:
+    return "GL_VERTEX_SHADER";
+  case GL_FRAGMENT_SHADER:
+    return "GL_FRAGMENT_SHADER";
+  default:
+    return "(Unknown)";
+  }
+}
+
+WINDOW_DEF bool window_compile_shader(GLuint *shader, GLenum shader_type, const char *shader_source) {
+  *shader = glCreateShader(shader_type);
+  glShaderSource(*shader, 1, &shader_source, NULL);
+  glCompileShader(*shader);
+
+  GLint compiled = 0;
+  glGetShaderiv(*shader, GL_COMPILE_STATUS, &compiled);
+
+  if (!compiled) {
+    GLchar message[1024];
+    GLsizei message_size = 0;
+    glGetShaderInfoLog(*shader, sizeof(message), &message_size, message);
+    WINDOW_LOG("Could not compile shader: %s\n", window_shader_type_name(shader_type));
+    WINDOW_LOG("%.*s\n", message_size, message);
+    return false;
+  }
+
+  return true;
+}
+
+WINDOW_DEF bool window_link_program(GLuint *program, GLuint vertex_shader, GLuint fragment_shader) {
+  *program = glCreateProgram();
+  glAttachShader(*program, vertex_shader);
+  glAttachShader(*program, fragment_shader);
+
+  glLinkProgram(*program);
+  
+  GLint linked = 0;
+  glGetProgramiv(*program, GL_LINK_STATUS, &linked);
+  if(!linked) {
+    GLsizei message_size = 0;
+    GLchar message[1024];
+
+    glGetProgramInfoLog(*program, sizeof(message), &message_size, message);
+    WINDOW_LOG("Could not link program: %.*s\n", message_size, message);
+    return false;
+  }
+  
+  return true;
+    
+}
+
+////////////////////////////////////////////////////////////////////////
+// renderer - definitions
+////////////////////////////////////////////////////////////////////////
+
+#ifndef WINDOW_NO_RENDERER
+
+static const char* window_renderer_vertex_shader_source =
+  "#version 330 core\n"
+  "\n"
+  "layout(location = 0) in vec2 position;\n"
+  "layout(location = 1) in vec4 color;\n"
+  "layout(location = 2) in vec2 uv;\n"
+  "\n"
+  "uniform float resolution_x;\n"
+  "uniform float resolution_y;\n"
+  "\n"
+  "out vec4 out_color;\n"
+  "out vec2 out_uv;\n"
+  "\n"
+  "vec2 resolution_project(vec2 point) {\n"
+  "    return 2 * point / vec2(resolution_x, resolution_y) - 1;\n"
+  "}\n"
+  "\n"
+  "void main() {\n"
+  "  out_color = color;\n"
+  "  out_uv = uv;\n"
+  "  gl_Position = vec4(resolution_project(position), 0, 1);\n"
+  "}";
+
+static const char *window_renderer_fragment_shader_source=
+  "#version 330 core\n"
+  "\n"
+  "uniform sampler2D font_tex;\n"
+  "uniform sampler2D tex;\n"
+  "\n"
+  "in vec4 out_color;\n"
+  "in vec2 out_uv;\n"
+  "\n"
+  "out vec4 fragColor;\n"
+  "\n"
+  "void main() {\n"
+  "    if(out_uv.x < 0 && out_uv.y < 0) {\n"
+  "        fragColor = out_color;\n"
+  "    } else if(out_color.w < 0) {\n"
+  "        vec4 color = texture(font_tex, vec2(out_uv.x, 1-out_uv.y));\n"
+  "        float a = color.w * -out_color.w;\n"
+  "        color = (color + vec4(1, 1, 1, 0)) * out_color;\n"
+  "        color.w = a;\n"
+  "        fragColor = color;\n"
+  "    } else {\n"
+  "        vec4 color = texture(tex, vec2(out_uv.x, 1-out_uv.y));\n"
+  "        color = color * out_color;\n"
+  "        fragColor = color;\n"
+  "    }\n"
+  "}\n";
+
+WINDOW_DEF Window_Renderer_Vec2f window_renderer_vec2f(float x, float y) {
+  return (Window_Renderer_Vec2f) { x, y};
+}
+
+WINDOW_DEF Window_Renderer_Vec4f window_renderer_vec4f(float x, float y, float z, float w) {
+  return (Window_Renderer_Vec4f) { x, y, z, w};
+}
+
+WINDOW_DEF bool window_renderer_init(Window_Renderer *r) {
+  (void) WHITE;
+  (void) RED;
+  (void) BLUE;
+  (void) GREEN;
+  (void) BLACK;
+    
+  // introduce 'verticies' to opengl
+  glGenVertexArrays(1, &r->vao);
+  glBindVertexArray(r->vao);
+
+  glGenBuffers(1, &r->vbo);
+  glBindBuffer(GL_ARRAY_BUFFER, r->vbo);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(r->verticies), r->verticies, GL_DYNAMIC_DRAW);
+
+  // introduce 'Vertex' to opengl
+  glEnableVertexAttribArray(WINDOW_RENDERER_VERTEX_ATTR_POSITION);
+  glVertexAttribPointer(WINDOW_RENDERER_VERTEX_ATTR_POSITION,
+			sizeof(Window_Renderer_Vec2f)/sizeof(float),
+			GL_FLOAT,
+			GL_FALSE,
+			sizeof(Window_Renderer_Vertex),
+			(GLvoid *) offsetof(Window_Renderer_Vertex, position));
+
+  glEnableVertexAttribArray(WINDOW_RENDERER_VERTEX_ATTR_COLOR);
+  glVertexAttribPointer(WINDOW_RENDERER_VERTEX_ATTR_COLOR,
+			sizeof(Window_Renderer_Vec4f)/sizeof(float),
+			GL_FLOAT,
+			GL_FALSE,
+			sizeof(Window_Renderer_Vertex),
+			(GLvoid *) offsetof(Window_Renderer_Vertex, color));
+
+  glEnableVertexAttribArray(WINDOW_RENDERER_VERTEX_ATTR_UV);
+  glVertexAttribPointer(WINDOW_RENDERER_VERTEX_ATTR_UV,
+			sizeof(Window_Renderer_Vec2f)/sizeof(float),
+			GL_FLOAT,
+			GL_FALSE,
+			sizeof(Window_Renderer_Vertex),
+			(GLvoid *) offsetof(Window_Renderer_Vertex, uv));
+  
+  // compile shaders
+  if(!window_compile_shader(&r->vertex_shader, GL_VERTEX_SHADER, window_renderer_vertex_shader_source)) {
+    return false;
+  }
+    
+  if(!window_compile_shader(&r->fragment_shader, GL_FRAGMENT_SHADER, window_renderer_fragment_shader_source)) {
+    return false;
+  }
+
+  // link program
+  if(!window_link_program(&r->program, r->vertex_shader, r->fragment_shader)) {
+    return false;
+  }
+  glUseProgram(r->program);
+
+
+  r->images_count = 0;
+  r->verticies_count = 0;
+  r->font_index = -1;
+
+  window_renderer_imgui_end();
+  window_renderer.input = vec2f(-1.f, -1.f);
+  
+  return true;
+}
+
+WINDOW_DEF void window_renderer_free(Window_Renderer *r) {
+  (void) r;
+}
+
+
+WINDOW_DEF void window_renderer_begin(int width, int height) {
+
+  Window_Renderer *r = &window_renderer;
+
+  if(width > 0 && height > 0) {
+
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_BLEND);
+    
+    glViewport(0, 0, width, height);
+    glClear(GL_COLOR_BUFFER_BIT);
+    Window_Renderer_Vec4f *c = &r->background;
+    glClearColor(c->x, c->y, c->z, c->w);
+
+    // tell vertex shader what is the resolution is
+    glUniform1fv(glGetUniformLocation(r->program, "resolution_x"), 1, &r->width);
+    glUniform1fv(glGetUniformLocation(r->program, "resolution_y"), 1, &r->height);
+
+    r->width = (float) width;
+    r->height = (float) height;
+  }
+
+
+  if(r->font_index > 0) {
+    GLint uniformLocation1 = glGetUniformLocation(r->program, "font_tex");
+    glUniform1i(uniformLocation1, r->font_index);	
+  }
+
+  r->tex_index = -1;  
+}
+
+WINDOW_DEF void window_renderer_imgui_begin(Window *w, Window_Event *e) {
+
+  (void) e;
+  int x, y;
+  window_get_mouse_position(w, &x, &y);
+
+  window_renderer.pos = window_renderer_vec2f((float) x, ((float) w->height - (float) y));
+  if(window_renderer.clicked) {
+    window_renderer.input = window_renderer.pos;
+  }
+}
+
+WINDOW_DEF void window_renderer_imgui_update(Window *w, Window_Event *e) {
+  (void) w;
+  if(e->type == WINDOW_EVENT_MOUSEPRESS) {    
+    window_renderer.clicked = true;
+  } else if(e->type == WINDOW_EVENT_MOUSERELEASE) {
+    window_renderer.released = true;
+  }  
+}
+
+WINDOW_DEF void window_renderer_imgui_end(Window *w, Window_Event *e) {
+  (void) w;
+  (void) e;
+  if(window_renderer.released) {
+    window_renderer.input = vec2f(-1.f, -1.f);
+  }
+    
+  window_renderer.clicked = false;
+  window_renderer.released = false;
+}
+
+WINDOW_DEF void window_renderer_end() {
+  Window_Renderer *r = &window_renderer;
+  
+  glBufferSubData(GL_ARRAY_BUFFER, 0, r->verticies_count * sizeof(Window_Renderer_Vertex), r->verticies);
+  glDrawArrays(GL_TRIANGLES, 0, r->verticies_count);
+  r->verticies_count = 0;
+}
+
+WINDOW_DEF void window_renderer_set_color(Window_Renderer_Vec4f color) {
+  Window_Renderer *r = &window_renderer;
+  r->background = color;
+}
+
+WINDOW_DEF void window_renderer_vertex(Window_Renderer_Vec2f p, Window_Renderer_Vec4f c, Window_Renderer_Vec2f uv) {
+
+  Window_Renderer *r = &window_renderer;
+
+  if(r->verticies_count < WINDOW_RENDERER_CAP) {
+    Window_Renderer_Vertex *last = &r->verticies[r->verticies_count];
+    last->position = p;
+    last->color = c;
+    last->uv = uv;
+    r->verticies_count++;	
+  } 
+}
+
+WINDOW_DEF void window_renderer_triangle(Window_Renderer_Vec2f p1, Window_Renderer_Vec2f p2, Window_Renderer_Vec2f p3, Window_Renderer_Vec4f c1, Window_Renderer_Vec4f c2, Window_Renderer_Vec4f c3, Window_Renderer_Vec2f uv1, Window_Renderer_Vec2f uv2, Window_Renderer_Vec2f uv3) {
+
+  Window_Renderer *r = &window_renderer;
+
+  if(r->verticies_count + 3 >= WINDOW_RENDERER_CAP) {
+    window_renderer_end();
+  }
+    
+  window_renderer_vertex(p1, c1, uv1);
+  window_renderer_vertex(p2, c2, uv2);
+  window_renderer_vertex(p3, c3, uv3);	
+}
+
+WINDOW_DEF void window_renderer_solid_triangle(Window_Renderer_Vec2f p1, Window_Renderer_Vec2f p2, Window_Renderer_Vec2f p3, Window_Renderer_Vec4f c) {
+
+  Window_Renderer *r = &window_renderer;
+
+  if(r->verticies_count + 3 >= WINDOW_RENDERER_CAP) {
+    window_renderer_end();
+  }
+	
+  Window_Renderer_Vec2f uv = window_renderer_vec2f(-1, -1);
+  window_renderer_vertex(p1, c, uv);
+  window_renderer_vertex(p2, c, uv);
+  window_renderer_vertex(p3, c, uv);
+}
+
+WINDOW_DEF void window_renderer_quad(Window_Renderer_Vec2f p1, Window_Renderer_Vec2f p2, Window_Renderer_Vec2f p3, Window_Renderer_Vec2f p4, Window_Renderer_Vec4f c1, Window_Renderer_Vec4f c2, Window_Renderer_Vec4f c3, Window_Renderer_Vec4f c4, Window_Renderer_Vec2f uv1, Window_Renderer_Vec2f uv2, Window_Renderer_Vec2f uv3, Window_Renderer_Vec2f uv4) {
+  window_renderer_triangle(p1, p2, p4, c1, c2, c4, uv1, uv2, uv4);
+  window_renderer_triangle(p1, p3, p4, c1, c3, c4, uv1, uv3, uv4);
+}
+
+WINDOW_DEF void window_renderer_solid_rect(Window_Renderer_Vec2f pos, Window_Renderer_Vec2f size, Window_Renderer_Vec4f color) {
+  Vec2f uv = vec2f(-1, -1);
+  window_renderer_quad(pos,
+		       window_renderer_vec2f(pos.x + size.x, pos.y),
+		       window_renderer_vec2f(pos.x, pos.y + size.y),
+		       window_renderer_vec2f(pos.x + size.x, pos.y + size.y),
+		       color, color, color, color, uv, uv, uv, uv);
+}
+
+WINDOW_DEF void window_renderer_solid_rounded_rect(Vec2f pos, Vec2f size, float radius, int parts, Vec4f color) {
+  if(size.y < 4 * radius) radius = size.y / 4; 
+
+  window_renderer_solid_rect(vec2f(pos.x, pos.y + radius),
+		  vec2f(size.x, size.y - 2 * radius),
+		  color);
+
+  window_renderer_solid_rect(vec2f(pos.x + radius, pos.y),
+		  vec2f(size.x - 2 * radius, size.y),
+		  color);
+
+  pos = vec2f(pos.x + radius, pos.y + radius);
+  size = vec2f(size.x - 2 * radius, size.y - 2 * radius);
+
+  //bottom left
+  window_renderer_solid_circle(pos,
+		    PI, PI * 3 / 2,
+		    radius,
+		    parts,
+		    color);
+
+  //bottom right
+  window_renderer_solid_circle(vec2f(pos.x + size.x, pos.y),
+		    PI * 3 / 2, 2 * PI,
+		    radius,
+		    parts,
+		    color);
+
+  //top left
+  window_renderer_solid_circle(vec2f(pos.x, pos.y + size.y),
+		    PI / 2, PI,
+		    radius,
+		    parts,
+		    color);
+
+  //top right
+  window_renderer_solid_circle(vec2f(pos.x + size.x, pos.y + size.y),
+		    0, PI /2,
+		    radius,
+		    parts,
+		    color);
+}
+
+WINDOW_DEF bool window_renderer_button_impl(Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f *c) {
+  Window_Renderer_Vec2f pos = window_renderer.input;
+  bool holding =
+    p.x <= pos.x &&
+    (pos.x - p.x) <= s.x &&
+    p.y <= pos.y &&
+    (pos.y - p.y) <= s.y;
+  if(holding) {
+    c->w *= .5;
+  }
+  return holding;
+}
+
+WINDOW_DEF bool window_renderer_button(Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f c) {
+  bool holding = window_renderer_button_impl(p, s, &c);
+  window_renderer_solid_rect(p, s, c);
+  return window_renderer.released && holding;
+}
+
+WINDOW_DEF bool window_renderer_texture_button(unsigned int texture, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s) {
+  Window_Renderer_Vec4f c = vec4f(1, 1, 1, 1);
+  bool holding = window_renderer_button_impl(p, s, &c);
+  window_renderer_texture_colored(texture, p, s, vec2f(0, 0), vec2f(1, 1), c);
+  return window_renderer.released && holding;
+}
+
+WINDOW_DEF bool window_renderer_texture_button_ex(unsigned int texture, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f c, Window_Renderer_Vec2f uvp, Window_Renderer_Vec2f uvs) {
+  bool holding = window_renderer_button_impl(p, s, &c);
+  window_renderer_texture_colored(texture, p, s, uvp, uvs, c);
+  return window_renderer.released && holding;
+}
+
+WINDOW_DEF bool window_renderer_slider(Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f knot_color, Window_Renderer_Vec4f color, float value, float *cursor) {
+  
+  Window_Renderer_Vec2f cursor_pos = vec2f(p.x + s.x * value, p.y + s.y/2);
+  float cursor_radius = s.y * 1.125f;
+  *cursor = value;
+
+  Window_Renderer_Vec2f input = window_renderer.input;
+  float dx = input.x - cursor_pos.x;
+  float dy = input.y - cursor_pos.y;
+  bool knot_clicked = ((dx * dx) + (dy *dy)) <= (cursor_radius * cursor_radius);
+
+  if(knot_clicked) {
+    cursor_pos.x = window_renderer.pos.x;
+    if((cursor_pos.x - p.x) < 0) cursor_pos.x = p.x;
+    if(s.x < (cursor_pos.x - p.x)) cursor_pos.x = p.x + s.x;
+    *cursor = (cursor_pos.x - p.x) / s.x;
+  }
+  
+  window_renderer_solid_rect(p, vec2f(cursor_pos.x - p.x, s.y), knot_color);
+  window_renderer_solid_rect(vec2f(cursor_pos.x, p.y), vec2f(s.x - cursor_pos.x + p.x, s.y), color);
+  window_renderer_solid_circle(cursor_pos, 0, 2 * PI, cursor_radius, 20, knot_color);
+
+  bool clicked =
+    p.x <= input.x &&
+    (input.x - p.x) <= s.x&&
+    p.y <= input.y &&
+    (input.y - p.y) <= s.y;    
+  if(window_renderer.released && knot_clicked) {    
+    return true;
+  }
+  if(window_renderer.clicked && clicked) {
+    *cursor = (window_renderer.input.x - p.x) / s.x;
+    return true;
+  }
+
+  return false;
+}
+
+WINDOW_DEF void window_renderer_solid_rounded_shaded_rect(Window_Renderer_Vec2f pos,
+							  Window_Renderer_Vec2f size,
+							  float radius,
+							  int parts,
+							  float shade_px,
+							  Window_Renderer_Vec4f color) {
+  window_renderer_solid_rounded_rect(vec2f(pos.x - shade_px, pos.y - shade_px),
+				     vec2f(size.x + 2 *shade_px, size.y + 2 *shade_px),
+				     radius, parts, vec4f(0, 0, 0, color.w * .5f));
+  window_renderer_solid_rounded_rect(pos, size, radius, parts, color);
+}
+
+WINDOW_DEF void window_renderer_solid_rect_angle(Window_Renderer_Vec2f pos, Window_Renderer_Vec2f size,
+						 float angle,
+						 Window_Renderer_Vec4f color) {
+  Vec2f uv = vec2f(-1, -1);
+
+  float s = sinf(angle);
+  float c = cosf(angle);
+
+  float dy1 = s * size.x;
+  float dx1 = c * size.x;
+  
+  float dy2 = c * size.y;
+  float dx2 = s * size.y;
+
+  window_renderer_triangle(pos,
+			   window_renderer_vec2f(pos.x + dx1, pos.y + dy1),
+			   window_renderer_vec2f(pos.x - dx2, pos.y + dy2),
+			   color, color, color, uv, uv, uv);
+
+  window_renderer_triangle(window_renderer_vec2f(pos.x + dx1, pos.y + dy1),
+			   window_renderer_vec2f(pos.x - dx2, pos.y + dy2),
+			   window_renderer_vec2f(pos.x + dx1 - dx2, pos.y + dy1 + dy2),
+			   color, color, color, uv, uv, uv);
+}
+
+WINDOW_DEF void window_renderer_texture(unsigned int texture,
+					Window_Renderer_Vec2f p, Window_Renderer_Vec2f s,
+					Window_Renderer_Vec2f uvp, Window_Renderer_Vec2f uvs) {
+
+  Window_Renderer *r = &window_renderer;
+
+  if(r->tex_index != -1) {
+    window_renderer_end();
+  }
+
+  r->tex_index = (int) texture;
+  GLint uniformLocation1 = glGetUniformLocation(r->program, "tex");
+  glUniform1i(uniformLocation1, r->tex_index);
+    
+  Vec4f c = vec4f(1, 1, 1, 1);
+  window_renderer_quad(p,
+		       window_renderer_vec2f(p.x + s.x, p.y),
+		       window_renderer_vec2f(p.x, p.y + s.y),
+		       window_renderer_vec2f(p.x + s.x, p.y + s.y),
+		       c, c, c, c,
+		       uvp,
+		       window_renderer_vec2f(uvp.x + uvs.x, uvp.y),
+		       window_renderer_vec2f(uvp.x, uvp.y + uvs.y),
+		       window_renderer_vec2f(uvp.x + uvs.x, uvp.y + uvs.y));
+}
+
+WINDOW_DEF void window_renderer_texture_colored(unsigned int texture,
+						Window_Renderer_Vec2f p, Window_Renderer_Vec2f s,
+					        Window_Renderer_Vec2f uvp, Window_Renderer_Vec2f uvs,
+						Window_Renderer_Vec4f c) {
+  Window_Renderer *r = &window_renderer;
+  
+  if(r->tex_index != -1) {
+    window_renderer_end();
+  }
+
+  r->tex_index = (int) texture;
+  GLint uniformLocation1 = glGetUniformLocation(r->program, "tex");
+  glUniform1i(uniformLocation1, r->tex_index);
+  
+  window_renderer_quad(
+		       p,
+		       window_renderer_vec2f(p.x + s.x, p.y),
+		       window_renderer_vec2f(p.x, p.y + s.y),
+		       window_renderer_vec2f(p.x + s.x, p.y + s.y),
+		       c, c, c, c,
+		       uvp,
+		       window_renderer_vec2f(uvp.x + uvs.x, uvp.y),
+		       window_renderer_vec2f(uvp.x, uvp.y + uvs.y),
+		       window_renderer_vec2f(uvp.x + uvs.x, uvp.y + uvs.y));
+}
+
+
+WINDOW_DEF void window_renderer_solid_circle(Window_Renderer_Vec2f pos,
+					     float start_angle, float end_angle,
+					     float radius,
+					     int parts,
+					     Window_Renderer_Vec4f color) {
+  float P = end_angle - start_angle;
+  float A = start_angle;
+
+  Window_Renderer_Vec2f old = {radius * cosf(A),
+			       radius * sinf(A)};
+
+  float t = 0.0f;
+  float dt = 1.f / (float) parts;
+
+  for(int j=1;j<=parts;j++) {
+    t += dt;
+    Window_Renderer_Vec2f new = {radius * cosf(A + P * t),
+				 radius * sinf(A + P * t)};
+    window_renderer_solid_triangle(pos,
+				   window_renderer_vec2f(pos.x + new.x, pos.y + new.y),
+				   window_renderer_vec2f(pos.x + old.x, pos.y + old.y),
+				   color);
+    old = new;
+  }
+
+  
+}
+
+WINDOW_DEF bool window_renderer_push_texture(int width, int height, const void *data, bool grey, unsigned int *index) {
+
+  Window_Renderer *r = &window_renderer;
+
+  GLenum current_texture;
+  switch(r->images_count) {
+  case 0:
+    current_texture = GL_TEXTURE0;
+    break;
+  case 1:
+    current_texture = GL_TEXTURE1;
+    break;
+  case 2:
+    current_texture = GL_TEXTURE2;
+    break;
+  case 3:
+    current_texture = GL_TEXTURE3;
+    break;
+  default:
+    return false;
+  }
+  
+  glActiveTexture(current_texture);
+  
+  glGenTextures(1, &r->textures);
+  glBindTexture(GL_TEXTURE_2D, r->textures);
+
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+  if(grey) {
+    glTexImage2D(GL_TEXTURE_2D,
+		 0,
+		 GL_ALPHA,
+		 width,
+		 height,
+		 0,
+		 GL_ALPHA,
+		 GL_UNSIGNED_BYTE,
+		 data);	
+  } else {
+    glTexImage2D(GL_TEXTURE_2D,
+		 0,
+		 GL_RGBA,
+		 width,
+		 height,
+		 0,
+		 GL_RGBA,
+		 GL_UNSIGNED_INT_8_8_8_8_REV,
+		 data);
+  }
+
+  *index = r->images_count++;
+
+  return true;
+}
+
+#ifdef WINDOW_STB_TRUETYPE
+#include <stdio.h>
+
+#define WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE 1024
+
+WINDOW_DEF bool window_renderer_push_font(const char *filepath, float pixel_height) {
+
+  FILE *f = fopen(filepath, "rb");
+  if(!f) {
+    WINDOW_LOG("Can not open file: %s\n", filepath);
+    return false;
+  }
+
+  if(fseek(f, 0, SEEK_END) < 0) {
+    WINDOW_LOG("Can not seek in file: %s\n", filepath);
+    fclose(f);
+    return false;
+  }
+
+  long m = ftell(f);
+  if(m < 0) {
+    WINDOW_LOG("Can not read file(ftell): %s\n", filepath);
+    fclose(f);
+    return false;
+  }  
+
+  if(fseek(f, 0, SEEK_SET) < 0) {
+    WINDOW_LOG("Can not seek in file: %s\n", filepath);
+    fclose(f);
+    return false;
+  }
+
+  unsigned char *buffer = (unsigned char *) malloc((size_t) m);
+  if(!buffer) {
+    WINDOW_LOG("Can not allocate enough memory\n");
+    fclose(f);
+    return false;
+  }
+
+  size_t _m = (size_t) m;
+  size_t n = fread(buffer, 1, _m, f);
+  if(n != _m) {
+    WINDOW_LOG("Failed to read file(fread): %s\n", filepath);
+    free(buffer);
+    fclose(f);
+    return false;
+  }
+    
+  fclose(f);
+
+  unsigned char *temp_bitmap = malloc(WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE *
+				      WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE);
+  
+  Window_Renderer *r = &window_renderer;
+  stbtt_BakeFontBitmap(buffer,0, pixel_height,
+		       temp_bitmap,
+		       WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE,
+		       WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE,
+		       32, 96, r->font_cdata);
+
+  unsigned int tex;
+  bool result = push_texture(1024, 1024, temp_bitmap, true, &tex);
+
+  r->font_index = (int) tex;
+  r->font_height = pixel_height;
+
+  free(buffer);
+  free(temp_bitmap);
+    
+  return result;
+}
+
+WINDOW_DEF void window_renderer_text(const char *cstr, size_t cstr_len, Window_Renderer_Vec2f pos, float factor, Window_Renderer_Vec4f color) {
+
+  Window_Renderer *r = &window_renderer;
+
+  float x = 0;
+  float y = 0;
+  color.w *= -1;
+    
+  for(size_t i=0;i<cstr_len;i++) {
+    unsigned char c = cstr[i];
+    if (c < 32 && c >= 128) {
+      continue;
+    }
+
+    float _y = y;
+
+    stbtt_aligned_quad q;
+    stbtt_GetBakedQuad(r->font_cdata,
+		       WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE,
+		       WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE, c-32, &x, &y, &q,1);
+    //1=opengl & d3d10+,0=d3d9
+
+    Window_Renderer_Vec2f p = vec2f(pos.x + q.x0 * factor,pos.y + y + _y + factor * (y - q.y1) );
+    Window_Renderer_Vec2f s = vec2f((q.x1 - q.x0) * factor, (q.y1 - q.y0) * factor);
+    Window_Renderer_Vec2f uvp = vec2f(q.s0, 1 - q.t1);
+    Window_Renderer_Vec2f uvs = vec2f(q.s1 - q.s0, q.t1 - q.t0);	
+
+	
+    window_renderer_quad(
+			 p,
+			 window_renderer_vec2f(p.x + s.x, p.y),
+			 window_renderer_vec2f(p.x, p.y + s.y),
+			 window_renderer_vec2f(p.x + s.x, p.y + s.y),
+			 color, color, color, color,
+			 uvp,
+			 window_renderer_vec2f(uvp.x + uvs.x, uvp.y),
+			 window_renderer_vec2f(uvp.x, uvp.y + uvs.y),
+			 window_renderer_vec2f(uvp.x + uvs.x, uvp.y + uvs.y));       
+  }
+
+}
+
+WINDOW_DEF void window_renderer_text_wrapped(const char *cstr, size_t cstr_len, Window_Renderer_Vec2f *pos, Window_Renderer_Vec2f size, float scale, Window_Renderer_Vec4f color) {
+  Window_Renderer *r = &window_renderer;
+  Vec2f text_size;
+  
+  size_t i = 0;
+  while(i < cstr_len) {
+    size_t j=1;
+    for(;j<cstr_len - i;j++) {
+      measure_text_len(cstr + i, j, scale, &text_size);
+      if(text_size.x >= size.x) break;
+    }
+
+    draw_text_len_colored(cstr + i, j, *pos, scale, color);
+    i += j;
+    pos->y -= r->font_height;    
+  }
+}
+
+WINDOW_DEF bool window_renderer_text_button(const char *cstr, size_t cstr_len, float scale, Window_Renderer_Vec4f text_color, Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f c) {
+  bool holding = window_renderer_button_impl(p, s, &c);
+  window_renderer_solid_rect(p, s, c);
+  if(holding) {
+    text_color.w *= .5;
+  }
+
+  Vec2f size;
+  window_renderer_measure_text(cstr, cstr_len, scale, &size);
+
+  if(size.x <= s.x && size.y <= s.y) {
+    Vec2f pos = vec2f(p.x + s.x / 2 - size.x / 2,
+		      p.y + s.y / 2 - size.y / 2);
+    window_renderer_text(cstr, cstr_len, pos, scale, text_color);
+  }
+  
+  return window_renderer.released && holding;
+}
+
+WINDOW_DEF void window_renderer_measure_text(const char *cstr, size_t cstr_len, float factor, Vec2f *size) {
+  Window_Renderer *r = &window_renderer;
+
+  float hi = 0;
+  float lo = 0;
+
+  size->y = 0;
+  size->x = 0;
+
+  float x = 0;
+  float y = 0;
+    
+  for(size_t i=0;i<cstr_len;i++) {
+    unsigned char c = cstr[i];
+    if (c < 32 && c >= 128) {
+      continue;
+    }
+
+    stbtt_aligned_quad q;
+    stbtt_GetBakedQuad(r->font_cdata,
+		       WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE,
+		       WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE,
+		       c-32, &x, &y, &q, 1);
+
+    size->x = q.y1 - q.y0;
+    float height = q.x1 - q.x0;
+    if(height > hi) hi = height;
+    if(height < lo) lo = height;
+  }
+  size->x = x * factor;  
+  size->y = (hi - lo) * factor;
+}
+
+#endif //WINDOW_STB_TRUETYPE
+
+#ifdef WINDOW_STB_IMAGE
+
+WINDOW_DEF bool window_renderer_push_image(const char *filepath, int *width, int *height, unsigned int *index) {
+
+  unsigned char *image_data  = stbi_load(filepath, width, height, NULL, 4);
+  if(image_data == NULL)  {
+    return false;
+  }
+
+  bool result = window_renderer_push_texture(*width, *height, image_data, false, index);
+  stbi_image_free(image_data);
+
+  return result;
+}
+
+#endif // WINDOW_STB_IMAGE
+
+#endif //WINDOW_NO_RENDERER
+
+////////////////////////////////////////////////////////////////////////
+// opengl - definitions
+////////////////////////////////////////////////////////////////////////
+
+PROC _glActiveTexture = NULL;
+void glActiveTexture(GLenum texture) { _glActiveTexture(texture); }
+
+PROC _glGenVertexArrays = NULL;
+void glGenVertexArrays(GLsizei n, GLuint *arrays) { _glGenVertexArrays(n, arrays); }
+
+PROC _glBindVertexArray = NULL;
+void glBindVertexArray(GLuint array) { _glBindVertexArray(array); }
+
+PROC _glGenBuffers = NULL;
+void glGenBuffers(GLsizei n, GLuint *buffers) { _glGenBuffers(n, buffers); }
+
+PROC _glBindBuffer = NULL;
+void glBindBuffer(GLenum target, GLuint buffer) { _glBindBuffer(target, buffer); }
+
+PROC _glBufferData = NULL;
+void glBufferData(GLenum target, GLsizeiptr size, const void * data, GLenum usage) { _glBufferData(target, size, data, usage); }
+
+PROC _glEnableVertexAttribArray = NULL;
+void glEnableVertexAttribArray(GLuint index) { _glEnableVertexAttribArray(index); }
+
+PROC _glVertexAttribPointer = NULL;
+void glVertexAttribPointer(GLuint index,
+			   GLint size,
+			   GLenum type,
+			   GLboolean normalized,
+			   GLsizei stride,
+			   const void * pointer) {
+  _glVertexAttribPointer(index, size, type, normalized, stride, pointer);
+}
+
+PROC _glCreateShader = NULL;
+GLuint glCreateShader(GLenum shaderType) { return (GLuint) _glCreateShader(shaderType); }
+
+PROC _glShaderSource = NULL;
+void glShaderSource(GLuint shader,
+		    GLsizei count,
+		    const GLchar **_string,
+		    const GLint *length) {
+  _glShaderSource(shader, count, _string, length);
+}
+
+PROC _glCompileShader = NULL;
+void glCompileShader(GLuint shader) { _glCompileShader(shader); }
+
+PROC _glGetShaderiv = NULL;
+void glGetShaderiv(GLuint shader, GLenum pname, GLint *params) {
+  _glGetShaderiv(shader, pname, params);
+}
+
+PROC _glGetShaderInfoLog = NULL;
+void glGetShaderInfoLog(GLuint shader,
+			GLsizei maxLength,
+			GLsizei *length,
+			GLchar *infoLog) {
+  _glGetShaderInfoLog(shader, maxLength, length, infoLog);
+}
+
+PROC _glCreateProgram = NULL;
+GLuint glCreateProgram(void) { return (GLuint) _glCreateProgram(); }
+
+PROC _glAttachShader = NULL;
+void glAttachShader(GLuint program, GLuint shader) { _glAttachShader(program, shader); }
+
+PROC _glLinkProgram = NULL;
+void glLinkProgram(GLuint program) { _glLinkProgram(program); }
+
+PROC _glGetProgramInfoLog = NULL;
+void glGetProgramInfoLog(GLuint program,
+			 GLsizei maxLength,
+			 GLsizei *length,
+			 GLchar *infoLog) {
+  _glGetProgramInfoLog(program, maxLength, length, infoLog);
+}
+
+PROC _glGetProgramiv = NULL;
+void glGetProgramiv(GLuint program,
+		    GLenum pname,
+		    GLint *params) {
+  _glGetProgramiv(program, pname, params);
+}
+
+PROC _glUseProgram = NULL;
+void glUseProgram(GLuint program) { _glUseProgram(program); }
+
+PROC _glBufferSubData = NULL;
+void glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void * data) {
+  _glBufferSubData(target, offset, size, data);
+}
+
+PROC _glUniform2f = NULL;
+void glUniform2f(GLint location, GLfloat v0, GLfloat v1) {
+  _glUniform2f(location, v0, v1);
+}
+
+PROC _glUniform1f = NULL;
+void glUniform1f(GLint location, GLfloat v0) {
+  _glUniform1f(location, v0);
+}
+
+PROC _glUniform1fv = NULL;
+void glUniform1fv(GLint location, GLsizei count, const GLfloat *value) {
+  _glUniform1fv(location, count, value);
+}
+
+PROC _glUniform2fv = NULL;
+void glUniform2fv(GLint location, GLsizei count, const GLfloat *value) {
+  _glUniform2fv(location, count, value);
+}
+
+PROC _glUniform1i = NULL;
+void glUniform1i(GLint location, GLint v0) {
+  _glUniform1i(location, v0);
+}
+
+PROC _glGetUniformLocation = NULL;
+GLint glGetUniformLocation(GLuint program, const GLchar *name) { return (GLint) _glGetUniformLocation(program, name); }
+
+PROC _glGetActiveUniform = NULL;
+void glGetActiveUniform(GLuint program,
+			GLuint index,
+			GLsizei bufSize,
+			GLsizei *length,
+			GLint *size,
+			GLenum *type,
+			GLchar *name) {
+  _glGetActiveUniform(program, index, bufSize, length, size, type, name);
+}
+
+PROC _glGetUniformfv = NULL;
+void glGetUniformfv(GLuint program, GLint location, GLfloat *params) {
+  _glGetUniformfv(program, location, params);
+}
+
+PROC _glGetUniformiv = NULL;
+void glGetUniformiv(GLuint program, GLint location, GLsizei bufSize, GLint *params) {
+  _glGetUniformiv(program, location, bufSize, params);
+}
+
+PROC _wglSwapIntervalEXT = NULL;
+int wglSwapIntervalEXT(GLint interval) {
+  return (int) _wglSwapIntervalEXT(interval);
+}
+
+PROC _glSampleCoverage = NULL;
+void glSampleCoverage(GLfloat value, GLboolean invert) {
+  _glSampleCoverage(value, invert);
+}
+
+
+WINDOW_DEF void window_win32_opengl_init() {
+  if(_glActiveTexture != NULL) {
+    return;
+  }
+  
+  _glActiveTexture = wglGetProcAddress("glActiveTexture");
+  _glGenVertexArrays = wglGetProcAddress("glGenVertexArrays");
+  _glBindVertexArray= wglGetProcAddress("glBindVertexArray");
+  _glGenBuffers= wglGetProcAddress("glGenBuffers");
+  _glBindBuffer= wglGetProcAddress("glBindBuffer");
+  _glBufferData= wglGetProcAddress("glBufferData");
+  _glEnableVertexAttribArray= wglGetProcAddress("glEnableVertexAttribArray");
+  _glVertexAttribPointer= wglGetProcAddress("glVertexAttribPointer");
+  _glCreateShader= wglGetProcAddress("glCreateShader");
+  _glShaderSource= wglGetProcAddress("glShaderSource");
+  _glCompileShader= wglGetProcAddress("glCompileShader");
+  _glGetShaderiv= wglGetProcAddress("glGetShaderiv");
+  _glGetShaderInfoLog= wglGetProcAddress("glGetShaderInfoLog");
+  _glCreateProgram= wglGetProcAddress("glCreateProgram");
+  _glAttachShader= wglGetProcAddress("glAttachShader");
+  _glLinkProgram= wglGetProcAddress("glLinkProgram");
+  _glGetProgramInfoLog= wglGetProcAddress("glGetProgramInfoLog");
+  _glGetProgramiv= wglGetProcAddress("glGetProgramiv");
+  _glUseProgram= wglGetProcAddress("glUseProgram");
+  _glBufferSubData= wglGetProcAddress("glBufferSubData");
+  _glUniform2f= wglGetProcAddress("glUniform2f");
+  _glUniform1f= wglGetProcAddress("glUniform1f");
+  _glUniform1i= wglGetProcAddress("glUniform1i");
+  _glGetUniformLocation= wglGetProcAddress("glGetUniformLocation");
+  _glGetActiveUniform= wglGetProcAddress("glGetActiveUniform");
+  _glGetUniformfv= wglGetProcAddress("glGetUniformfv");
+  _glUniform1fv= wglGetProcAddress("glUniform1fv");
+  _glUniform2fv= wglGetProcAddress("glUniform2fv");
+  _glGetUniformiv= wglGetProcAddress("glGetUniformiv");
+  _wglSwapIntervalEXT = wglGetProcAddress("wglSwapIntervalEXT");
+}
+
+#endif //WINDOW_IMPLEMENTATION
+
+#endif //WINDOW_H
+#endif // WINDOW_DISABLE
+
 #endif // LIBSTD_H

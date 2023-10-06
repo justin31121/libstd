@@ -1,3 +1,4 @@
+
 #include <stdio.h>
 #include <assert.h>
 
@@ -56,7 +57,7 @@ int main() {
   char name[MAX_PATH];
 
   //FOR EVERY FILE IN ...
-  const char *source_dir = "src/";
+  const char *source_dir = "thirdparty/";
  
   Io_Dir dir;
   if(!io_dir_open(&dir, source_dir)) {
@@ -78,7 +79,7 @@ int main() {
 
   io_dir_close(&dir);
 
-  source_dir = "thirdparty/";
+  source_dir = "src/";
 
   if(!io_dir_open(&dir, source_dir)) {
     panicf("Can not open: '%s': (%d) %s",
@@ -104,6 +105,19 @@ int main() {
   io_file_write_cstr(&f, "#ifndef LIBSTD_H\n");
   io_file_write_cstr(&f, "#define LIBSTD_H\n\n");
 
+  // _ENABLE
+
+  for(size_t i=0;i<components_count;i++) {
+    Component *c = &components[i];
+
+    temp_size = snprintf(temp, sizeof(temp), "// #define %s_ENABLE\n", c->name);
+    assert(temp_size < sizeof(temp));
+
+    io_file_write(&f, temp, temp_size, 1);
+  }
+
+  io_file_write_cstr(&f, "\n");
+
   //  _IMPLEMENTATION
 
   io_file_write_cstr(&f, "#ifdef LIBSTD_IMPLEMENTATION\n");
@@ -118,22 +132,6 @@ int main() {
   }
 
   io_file_write_cstr(&f, "#endif // LIBSTD_IMPLEMENTATION\n\n");
-
-  //  _DISABLE
-
-  for(size_t i=0;i<components_count;i++) {
-    Component *c = &components[i];
-
-    temp_size = snprintf(temp, sizeof(temp),
-			 "#ifdef %s_DISABLE\n"
-			 "#  define %s_H\n"
-			 "#endif // %s_DISABLE\n\n",
-			 c->name, c->name, c->name);
-    assert(temp_size < sizeof(temp));
-
-    io_file_write(&f, temp, temp_size, 1);
-  }  
- 
 
   //  _DEF
 
@@ -151,7 +149,6 @@ int main() {
   io_file_write_cstr(&f, "#endif // LIBSTD_DEF\n\n");
 
   // *CONTENT*
-
   temp_size = 0;
   for(size_t i=0;i<components_count;i++) {
     Component *c = &components[i];
@@ -162,6 +159,10 @@ int main() {
       return 1;
     }
 
+    io_file_write_cstr(&f, "#ifdef ");
+    io_file_write_cstr(&f, c->name);
+    io_file_write_cstr(&f, "_ENABLE\n\n");
+    
     //Fix \r\n's
     for(size_t j=0;j<size;j++) {
 
@@ -173,6 +174,15 @@ int main() {
       if(data[j] == '\r') continue;
       temp[temp_size++] = data[j];     
     }
+
+    if(temp_size > 0) {
+      io_file_write(&f, temp, temp_size, 1);
+      temp_size = 0;
+    }
+
+    io_file_write_cstr(&f, "#endif // ");
+    io_file_write_cstr(&f, c->name);
+    io_file_write_cstr(&f, "_DISABLE\n\n");
   }
 
   if(temp_size > 0) {

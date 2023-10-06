@@ -18,6 +18,7 @@
 #include <math.h>
 
 #include <windows.h>
+#include <shellapi.h>
 #include <GL/GL.h>
 
 #ifndef WINDOW_DEF

@@ -264,7 +264,7 @@ HTTP_DEF bool http_socket_connect_plain(Http *http, const char *hostname, uint16
 
   bool out = true;
   if(connect(http->socket, result->ai_addr, (int) result->ai_addrlen) != 0) {
-    HTTP_LOG("connect failed: %d", GetLastError());
+    HTTP_LOG("connect failed: %ld", GetLastError());
     out = false;
   }
   
