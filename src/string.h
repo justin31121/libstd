@@ -20,6 +20,24 @@ typedef int64_t s64;
 typedef float f32;
 typedef double f64;
 
+#define return_defer(n) do{			\
+    result = (n);				\
+    goto defer;					\
+  }while(0)
+
+#define errorf(...) do{						\
+    fflush(stdout);						\
+    fprintf(stderr, "%s:%d:ERROR: ", __FILE__, __LINE__);	\
+    fprintf(stderr,  __VA_ARGS__ );				\
+    fprintf(stderr, "\n");					\
+    fflush(stderr);						\
+  }while(0)
+
+#define panicf(...) do{						\
+    errorf(__VA_ARGS__);					\
+    exit(1);							\
+  }while(0)
+
 #endif // TYPES_H
 
 #ifndef STRING_DEF
