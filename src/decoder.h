@@ -323,49 +323,15 @@ DECODER_DEF bool decoder_init(Decoder *decoder,
     return false;
   }
   
-  char chLayoutDescription[128];
+  *channels = av_codec_parameters->ch_layout.nb_channels;
 
-  // I have received different compile errors/warnings, due to 
-  // different libav-versions. Use one of the following implementations:
-
-  /*
-  // BEGIN FIRST
-  int sts = av_channel_layout_describe(&av_codec_parameters->ch_layout, chLayoutDescription, sizeof(chLayoutDescription));
-  if(sts < 0) {
-    return false;
+  static const char *layout = "mono";
+  if(*channels == 2) {
+    layout = "stereo";
   }
 
-  if(strcmp(chLayoutDescription, "stereo") == 0) {
-    *channels = 2;
-  } else if(strcmp(chLayoutDescription, "mono") == 0) {
-    *channels = 1;    
-  } else if(strcmp(chLayoutDescription, "2 channels") == 0) {
-    memcpy(chLayoutDescription, "stereo", 7);
-    *channels = 2;
-  } else if(strcmp(chLayoutDescription, "1 channel")) {
-  memcpy(chLayoutDescription, "mono", 5);
-    *channels = 1;
-  } else {
-    return false;
-  }
-  // END FIRST
-  */
-
-  // BEGIN SECOND
-  uint64_t ch_layout = av_codec_parameters->channel_layout;
-  if(ch_layout & AV_CH_LAYOUT_MONO) {
-    memcpy(chLayoutDescription, "mono", 5);
-    *channels = 2;
-  } else if (ch_layout & AV_CH_LAYOUT_STEREO) {
-    memcpy(chLayoutDescription, "stereo", 7);
-    *channels = 2;
-  } else {
-    return false;
-  }
-  // END SECOND
-
-  av_opt_set(decoder->swr_context, "in_channel_layout", chLayoutDescription, 0);
-  av_opt_set(decoder->swr_context, "out_channel_layout", chLayoutDescription, 0);
+  av_opt_set(decoder->swr_context, "in_channel_layout", layout, 0);
+  av_opt_set(decoder->swr_context, "out_channel_layout", layout, 0);
   av_opt_set_int(decoder->swr_context, "in_sample_fmt", decoder->av_codec_context->sample_fmt, 0);
   av_opt_set_int(decoder->swr_context, "in_sample_rate", decoder->av_codec_context->sample_rate, 0);
   av_opt_set_int(decoder->swr_context, "out_sample_fmt", av_sample_format, 0);
