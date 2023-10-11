@@ -249,18 +249,20 @@ IO_DEF bool io_exists(const char *file_path, bool *is_file) {
 }
 
 IO_DEF bool io_getenv(const char *name, char *buffer, size_t buffer_cap, size_t *buffer_len) {
+  if(buffer_len) *buffer_len = 0;
+  
   DWORD size = GetEnvironmentVariable(name, buffer, buffer_cap);
   if(size == 0) {
     IO_LOG("Environment-Variable: '%s' does not exist", name);
     return false;
   }
 
+  if(buffer_len) *buffer_len = size;
+
   if(size > buffer_cap) {
     IO_LOG("Environment-Variable: '%s' does not find into %llu chars. %lu needed", name, buffer_cap, size);
     return false;
   }
-
-  if(buffer_len) *buffer_len = size;
 
   return true;
 }
