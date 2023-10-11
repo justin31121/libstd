@@ -37,6 +37,8 @@ IO_DEF bool io_delete_dir(const char *dir_path);
 
 IO_DEF bool io_exists(const char *file_path, bool *is_file);
 
+IO_DEF bool io_getenv(const char *name, char *buffer, size_t buffer_cap, size_t *buffer_len);
+
 ////////////////////////////////////////////////////////////////////////////////////////
 
 // Io_Dir
@@ -245,6 +247,24 @@ IO_DEF bool io_exists(const char *file_path, bool *is_file) {
   if(is_file) *is_file = !(attribs & FILE_ATTRIBUTE_DIRECTORY);
   return attribs != INVALID_FILE_ATTRIBUTES;
 }
+
+IO_DEF bool io_getenv(const char *name, char *buffer, size_t buffer_cap, size_t *buffer_len) {
+  DWORD size = GetEnvironmentVariable(name, buffer, buffer_cap);
+  if(size == 0) {
+    IO_LOG("Environment-Variable: '%s' does not exist", name);
+    return false;
+  }
+
+  if(size > buffer_cap) {
+    IO_LOG("Environment-Variable: '%s' does not find into %llu chars. %lu needed", name, buffer_cap, size);
+    return false;
+  }
+
+  if(buffer_len) *buffer_len = size;
+
+  return true;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////
 
 IO_DEF bool io_dir_open(Io_Dir *dir, const char *dir_path) {
