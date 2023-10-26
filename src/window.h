@@ -18,7 +18,6 @@
 #include <math.h>
 
 #include <windows.h>
-#include <shellapi.h>
 #include <GL/GL.h>
 
 #ifndef WINDOW_DEF
@@ -34,6 +33,11 @@
 #define WINDOW_BACKSPACE 8
 #define WINDOW_ESCAPE 27
 #define WINDOW_SPACE 32
+
+#define WINDOW_ARROW_LEFT 37
+#define WINDOW_ARROW_UP 38
+#define WINDOW_ARROW_RIGHT 39
+#define WINDOW_ARROW_DOWN 40
 
 typedef enum{
   WINDOW_EVENT_NONE = 0,
@@ -189,6 +193,7 @@ static Window_Renderer_Vec4f BLACK = {0, 0, 0, 1};
 
 #ifdef WINDOW_STB_TRUETYPE
 #  define push_font window_renderer_push_font
+#  define push_font_memory window_renderer_push_font_memory
 #  define draw_text(cstr, pos, factor) window_renderer_text((cstr), strlen((cstr)), (pos), (factor), (WHITE))
 #  define draw_text_colored(cstr, pos, factor, color) window_renderer_text((cstr), strlen((cstr)), (pos), (factor), (color))
 #  define draw_text_len(cstr, cstr_len, pos, factor) window_renderer_text((cstr), (cstr_len), (pos), (factor), (WHITE))
@@ -202,6 +207,7 @@ static Window_Renderer_Vec4f BLACK = {0, 0, 0, 1};
 
 #ifdef WINDOW_STB_IMAGE
 #  define push_image window_renderer_push_image
+#  define push_image_memory window_renderer_push_image_memory
 #endif //WINDOW_STB_IMAGE
 
 WINDOW_DEF bool window_renderer_init(Window_Renderer *r);
@@ -239,6 +245,7 @@ WINDOW_DEF bool window_renderer_slider(Window_Renderer_Vec2f p, Window_Renderer_
 
 #ifdef WINDOW_STB_TRUETYPE
 WINDOW_DEF bool window_renderer_push_font(const char *filepath, float pixel_height);
+WINDOW_DEF bool window_renderer_push_font_memory(unsigned char *memory, size_t memory_len, float pixel_height);
 WINDOW_DEF void window_renderer_measure_text(const char *cstr, size_t cstr_len, float scale, Vec2f *size);
 WINDOW_DEF void window_renderer_text(const char *cstr, size_t cstr_len, Window_Renderer_Vec2f pos, float scale, Window_Renderer_Vec4f color);
 WINDOW_DEF void window_renderer_text_wrapped(const char *cstr, size_t cstr_len, Window_Renderer_Vec2f *pos, Window_Renderer_Vec2f size, float scale, Window_Renderer_Vec4f color);
@@ -248,6 +255,7 @@ WINDOW_DEF bool window_renderer_text_button(const char *cstr, size_t cstr_len, f
 
 #ifdef WINDOW_STB_IMAGE
 WINDOW_DEF bool window_renderer_push_image(const char *filepath, int *width, int *height, unsigned int *index);
+WINDOW_DEF bool window_renderer_push_image_memory(unsigned char *data, size_t data_len, int *width, int *height, unsigned int *index);
 #endif //WINDOW_STB_IMAGE
 
 #endif //WINDOW_NO_RENDERER
@@ -1179,14 +1187,24 @@ WINDOW_DEF void window_renderer_solid_rounded_rect(Vec2f pos, Vec2f size, float 
 }
 
 WINDOW_DEF bool window_renderer_button_impl(Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f *c) {
-  Window_Renderer_Vec2f pos = window_renderer.input;
+  Window_Renderer_Vec2f pos = window_renderer.input;  
   bool holding =
     p.x <= pos.x &&
     (pos.x - p.x) <= s.x &&
     p.y <= pos.y &&
     (pos.y - p.y) <= s.y;
   if(holding) {
-    c->w *= .5;
+    c->w *= .3f;
+  } else {
+    pos = window_renderer.pos;  
+    bool hovering =
+      p.x <= pos.x &&
+      (pos.x - p.x) <= s.x &&
+      p.y <= pos.y &&
+      (pos.y - p.y) <= s.y;
+    if(hovering) {
+      c->w *= .6f;
+    }
   }
   return holding;
 }
@@ -1476,7 +1494,7 @@ WINDOW_DEF bool window_renderer_push_font(const char *filepath, float pixel_heig
   }
     
   fclose(f);
-
+  
   unsigned char *temp_bitmap = malloc(WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE *
 				      WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE);
   
@@ -1494,6 +1512,31 @@ WINDOW_DEF bool window_renderer_push_font(const char *filepath, float pixel_heig
   r->font_height = pixel_height;
 
   free(buffer);
+  free(temp_bitmap);
+    
+  return result;
+  
+}
+
+WINDOW_DEF bool window_renderer_push_font_memory(unsigned char *memory, size_t memory_len, float pixel_height) {
+  (void) memory_len;
+  
+  unsigned char *temp_bitmap = malloc(WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE *
+				      WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE);
+  
+  Window_Renderer *r = &window_renderer;
+  stbtt_BakeFontBitmap(memory, 0, pixel_height,
+		       temp_bitmap,
+		       WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE,
+		       WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE,
+		       32, 96, r->font_cdata);
+
+  unsigned int tex;
+  bool result = push_texture(1024, 1024, temp_bitmap, true, &tex);
+
+  r->font_index = (int) tex;
+  r->font_height = pixel_height;
+
   free(temp_bitmap);
     
   return result;
@@ -1617,8 +1660,20 @@ WINDOW_DEF void window_renderer_measure_text(const char *cstr, size_t cstr_len, 
 
 WINDOW_DEF bool window_renderer_push_image(const char *filepath, int *width, int *height, unsigned int *index) {
 
-  unsigned char *image_data  = stbi_load(filepath, width, height, NULL, 4);
-  if(image_data == NULL)  {
+  unsigned char *image_data = stbi_load(filepath, width, height, NULL, 4);
+  if(image_data == NULL) {
+    return false;
+  }
+
+  bool result = window_renderer_push_texture(*width, *height, image_data, false, index);
+  stbi_image_free(image_data);
+
+  return result;
+}
+
+WINDOW_DEF bool window_renderer_push_image_memory(unsigned char *data, size_t data_len, int *width, int *height, unsigned int *index) {
+  unsigned char *image_data = stbi_load_from_memory(data, (int) data_len, width, height, 0, 4);
+  if(image_data == NULL) {
     return false;
   }
 

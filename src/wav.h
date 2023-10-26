@@ -12,31 +12,38 @@
 #  define WAV_DEF static inline
 #endif //WAV_DEF
 
+#define WAV_FMT_PCM 0x1
+#define WAV_FMT_IEEE 0x3
+
 typedef struct {
   int8_t chunkID[4];  // 'RIFF'
   uint32_t chunkSize;
+  
   int8_t riffType[4]; // 'WAVE'
   int8_t fmtID[4];    // 'fmt '
-  uint32_t fmtChunkSize;
+  
+  uint32_t fmtChunkSize;  
   uint16_t wFormatTag;
   uint16_t channels; // wChannels
+  
   uint32_t sample_rate; // dwSamplesPerSec
   uint32_t dwAvgBytesPerSec;
+  
   uint16_t wBlockAlign;
-  uint16_t wBitsPerSample;
-  uint8_t data[4];  // 'data'
+  uint16_t wBitsPerSample;  
+  uint8_t data[4];  // 'data'  
   uint32_t dataSize;
 } Wav_Header;
 
 typedef Wav_Header Wav;
 
 // Public:
-WAV_DEF bool wav_slurp(Wav *wav_header, const char *filepath, unsigned char **data, uint32_t *size);
-WAV_DEF bool wav_read(Wav *wav_header, unsigned char *memory, size_t memory_len, unsigned char **data, uint32_t *size);
+WAV_DEF bool wav_slurp(Wav *wav_header, const char *filepath, unsigned char **data, uint64_t *size);
+WAV_DEF bool wav_read(Wav *wav_header, unsigned char *memory, size_t memory_len, unsigned char **data, uint64_t *size);
 
 #ifdef WAV_IMPLEMENTATION
 
-WAV_DEF bool wav_slurp(Wav *wav_header, const char *filepath, unsigned char **data, uint32_t *size) {
+WAV_DEF bool wav_slurp(Wav *wav_header, const char *filepath, unsigned char **data, uint64_t *size) {
   FILE* f = fopen(filepath, "rb");
   if(!f) {
     return false;
@@ -48,12 +55,14 @@ WAV_DEF bool wav_slurp(Wav *wav_header, const char *filepath, unsigned char **da
     return false;
   }
 
-  *size = (uint32_t) wav_header->chunkSize - sizeof(*wav_header);
+  uint64_t off = 32;
+  *size = (uint64_t) wav_header->chunkSize - sizeof(*wav_header) - off;
   *data = (unsigned char *) malloc(*size);
   if(!(*data)) {
     fclose(f);
     return false;
   }
+  fseek(f, (long) off, SEEK_CUR);
   size_t m = fread(*data, 1, *size, f);
   if(m != *size) {
     fclose(f);
@@ -64,7 +73,7 @@ WAV_DEF bool wav_slurp(Wav *wav_header, const char *filepath, unsigned char **da
   return true;
 }
 
-WAV_DEF bool wav_read(Wav *wav_header, unsigned char *memory, size_t memory_len, unsigned char **data, uint32_t *size) {
+WAV_DEF bool wav_read(Wav *wav_header, unsigned char *memory, size_t memory_len, unsigned char **data, uint64_t *size) {
 
   size_t header_size = sizeof(*wav_header);
 
@@ -76,8 +85,12 @@ WAV_DEF bool wav_read(Wav *wav_header, unsigned char *memory, size_t memory_len,
   
   memory += header_size;
   memory_len -= header_size;
+  
+  uint64_t off = 32;
+  memory += off;
+  memory_len -= off;
 
-  *size = (uint32_t) wav_header->chunkSize - header_size;
+  *size = (uint64_t) wav_header->chunkSize - header_size - off;
   *data = memory;  
 
   return true;

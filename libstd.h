@@ -9,14 +9,15 @@
 // #define EBML_ENABLE
 // #define HTTP_ENABLE
 // #define IO_ENABLE
+// #define JSON_ENABLE
 // #define MF_DECODER_ENABLE
 // #define MP4_ENABLE
 // #define SPECTRUM_ENABLE
-// #define STRING_ENABLE
 // #define THREAD_ENABLE
 // #define TYPES_ENABLE
 // #define WAV_ENABLE
 // #define WINDOW_ENABLE
+// #define _STRING_ENABLE
 
 #ifdef LIBSTD_IMPLEMENTATION
 #  define MINIZ_IMPLEMENTATION
@@ -27,14 +28,15 @@
 #  define EBML_IMPLEMENTATION
 #  define HTTP_IMPLEMENTATION
 #  define IO_IMPLEMENTATION
+#  define JSON_IMPLEMENTATION
 #  define MF_DECODER_IMPLEMENTATION
 #  define MP4_IMPLEMENTATION
 #  define SPECTRUM_IMPLEMENTATION
-#  define STRING_IMPLEMENTATION
 #  define THREAD_IMPLEMENTATION
 #  define TYPES_IMPLEMENTATION
 #  define WAV_IMPLEMENTATION
 #  define WINDOW_IMPLEMENTATION
+#  define _STRING_IMPLEMENTATION
 #endif // LIBSTD_IMPLEMENTATION
 
 #ifdef LIBSTD_DEF
@@ -46,14 +48,15 @@
 #  define EBML_DEF LIBSTD_DEF
 #  define HTTP_DEF LIBSTD_DEF
 #  define IO_DEF LIBSTD_DEF
+#  define JSON_DEF LIBSTD_DEF
 #  define MF_DECODER_DEF LIBSTD_DEF
 #  define MP4_DEF LIBSTD_DEF
 #  define SPECTRUM_DEF LIBSTD_DEF
-#  define STRING_DEF LIBSTD_DEF
 #  define THREAD_DEF LIBSTD_DEF
 #  define TYPES_DEF LIBSTD_DEF
 #  define WAV_DEF LIBSTD_DEF
 #  define WINDOW_DEF LIBSTD_DEF
+#  define _STRING_DEF LIBSTD_DEF
 #endif // LIBSTD_DEF
 
 #ifdef MINIZ_ENABLE
@@ -22690,6 +22693,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //   gcc  : -lasound
 
 #include <stdbool.h>
+#include <stdint.h>
 #ifdef _WIN32
 #  include <xaudio2.h>
 #elif linux
@@ -22720,7 +22724,7 @@ typedef struct{
 
 // Public
 AUDIO_DEF bool audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_rate);
-AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, int samples);
+AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, uint64_t samples);
 //AUDIO_DEF void audio_play_async(Audio *audio, unsigned char *data, int samples);
 AUDIO_DEF void audio_block(Audio *audio);
 AUDIO_DEF void audio_free(Audio *audio);
@@ -22844,10 +22848,10 @@ AUDIO_DEF bool audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_
     return true;
 }
 
-AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, int samples) {
+AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, uint64_t samples) {
     XAUDIO2_BUFFER xaudioBuffer = {0};
   
-    xaudioBuffer.AudioBytes = samples * audio->sample_size;
+    xaudioBuffer.AudioBytes = (UINT32) (samples * audio->sample_size);
     xaudioBuffer.pAudioData = data;
     xaudioBuffer.pContext = audio;
     
@@ -22856,10 +22860,10 @@ AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, int samples) {
     WaitForSingleObject((audio)->semaphore, INFINITE);
 }
 
-AUDIO_DEF void audio_play_async(Audio *audio, unsigned char *data, int samples) {
+AUDIO_DEF void audio_play_async(Audio *audio, unsigned char *data, uint64_t samples) {
     XAUDIO2_BUFFER xaudioBuffer = {0};
   
-    xaudioBuffer.AudioBytes = samples * audio->sample_size;
+    xaudioBuffer.AudioBytes = (UINT32) samples * audio->sample_size;
     xaudioBuffer.pAudioData = data;
     xaudioBuffer.pContext = audio;
     
@@ -22943,7 +22947,7 @@ AUDIO_DEF bool audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_
   return true;  
 }
 
-AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, int samples) {
+AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, uint64_t samples) {
 
   while(samples > 0) {
     int ret = snd_pcm_writei(audio->alsa_snd_pcm, data, samples);
@@ -23832,13 +23836,6 @@ EBML_DEF const char *ebml_type_name(Ebml_Type type) {
 #define HTTP_PORT 80
 #define HTTPS_PORT 443
 
-#include <stdio.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdarg.h>
-
-#include <assert.h>
-
 #ifdef _WIN32
 #  include <ws2tcpip.h>
 #  include <windows.h>
@@ -23876,6 +23873,14 @@ typedef struct {
 } http_win32_tls_socket;
 
 #endif // HTTP_WIN32_SSL
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdarg.h>
+#include <assert.h>
+#include <string.h>
 
 typedef struct{
 #ifdef _WIN32
@@ -23922,8 +23927,10 @@ typedef struct{
   size_t value_len;
   int body, state, state2, pair;
   size_t content_read;
+  bool chunked_debug;
 
   // Info
+  bool ok;
   int response_code;
   size_t content_length;
   
@@ -23969,6 +23976,12 @@ HTTP_DEF size_t http_sendf_impl_copy(Http_Sendf_Context *context, size_t buffer_
 
 #ifdef HTTP_IMPLEMENTATION
 
+#ifdef _WIN32
+#  define HTTP_INVALID (Http) { .socket = INVALID_SOCKET, .hostname = NULL }
+#else // linux
+#  define HTTP_INVALID (Http) { .socket = -1, .hostname = NULL }
+#endif // _WIN32
+
 #ifdef HTTP_QUIET
 #  ifdef _WIN32
 #    define HTTP_LOG_OS(method) char msg[1024]; FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR) &msg, sizeof(msg), NULL); HTTP_LOG((method)"-error: (%d) %s", GetLastError(), msg);
@@ -23988,7 +24001,7 @@ static SSL_CTX *http_global_ssl_context = NULL;
 #endif //HTTP_OPEN_SSL
 
 HTTP_DEF bool http_init(const char* hostname, uint16_t port, bool use_ssl, Http *h) {
-
+  
   size_t hostname_len = strlen(hostname);
   h->hostname = malloc(hostname_len + 1);
   if(!h->hostname) {
@@ -24165,6 +24178,7 @@ HTTP_DEF void http_free(Http *http) {
     SSL_set_shutdown(http->conn, SSL_RECEIVED_SHUTDOWN | SSL_SENT_SHUTDOWN);
     SSL_shutdown(http->conn);
     SSL_free(http->conn);
+    http->conn = NULL;
   }
 #endif // HTTP_OPEN_SSL
 
@@ -24205,18 +24219,27 @@ HTTP_DEF void http_free(Http *http) {
 
     DeleteSecurityContext(&s->context);
     FreeCredentialsHandle(&s->handle);
+    http->win32_tls.socket = INVALID_SOCKET;
   }
 
 #endif // HTTP_WIN32_SSL
   
 #ifdef _WIN32
-  closesocket(http->socket);
-  http->socket = INVALID_SOCKET;
+  if(http->socket != INVALID_SOCKET) {
+    closesocket(http->socket);
+    http->socket = INVALID_SOCKET;    
+  }
 #elif linux
-  close(http->socket);
+  if(http->socket >= 0) {
+    close(http->socket);    
+  }
 #endif
 
-  free((char *) http->hostname);
+  if(http->hostname) {
+    free((char *) http->hostname);
+    http->hostname = NULL;
+  }
+
 }
 
 HTTP_DEF bool http_socket_write(const char *data, size_t size, void *_http) {
@@ -24556,7 +24579,7 @@ HTTP_DEF bool http_socket_connect_tls(Http *http, const char *hostname) {
 #ifdef HTTP_WIN32_SSL
   http_win32_tls_socket *s = &http->win32_tls;
 
-   // initialize schannel
+  // initialize schannel
   {
     SCHANNEL_CRED cred =
       {
@@ -24819,6 +24842,15 @@ HTTP_DEF bool http_socket_read_plain(char *buffer, size_t buffer_size, void *_ht
 #  define HTTP_READ_FUNC http_socket_read_plain
 #endif // HTTP_OPEN_SSL
 
+#ifdef HTTP_DEBUG
+
+HTTP_DEF bool http_foo(const char *data, size_t size, void *userdata) {
+  (void) userdata;
+  HTTP_LOG("%.*s", (int) size, data);
+  return 1;
+}
+
+#endif // HTTP_DEBUG
 
 HTTP_DEF bool http_request_from(Http *http, const char *route, const char *method,
 				const char *headers,
@@ -24833,6 +24865,8 @@ HTTP_DEF bool http_request_from(Http *http, const char *route, const char *metho
   r->pair = HTTP_REQUEST_PAIR_KEY;
   r->key_len = 0;
   r->value_len = 0;
+  r->content_read = 0;
+  r->chunked_debug = false;
   
   if(body_len > 0) {
 
@@ -24850,6 +24884,18 @@ HTTP_DEF bool http_request_from(Http *http, const char *route, const char *metho
     }
     
   } else {
+
+#ifdef HTTP_DEBUG 
+    if(!http_sendf(http_foo, http, r->buffer, sizeof(r->buffer),
+		   "%s %s HTTP/1.1\r\n"
+		   "Host: %s\r\n"
+		   "%s"
+		   "\r\n", method, route, http->hostname, headers ? headers : "")) {
+      HTTP_LOG("Failed to send http-request");
+      return false;
+    }
+#endif // HTTP_DEBUG
+    
     if(!http_sendf(HTTP_WRITE_FUNC, http, r->buffer, sizeof(r->buffer),
 		   "%s %s HTTP/1.1\r\n"
 		   "Host: %s\r\n"
@@ -24945,7 +24991,16 @@ HTTP_DEF bool http_next_header(Http_Request *r, Http_Header *header) {
 	  r->state = HTTP_REQUEST_STATE_ERROR;
 	  return false;
 	}
-	r->response_code = (int) out;	
+	r->response_code = (int) out;
+
+	r->ok = 199 <= r->response_code && r->response_code <= 299;
+	
+#ifndef HTTP_QUIET
+	if(!r->ok) {
+	  HTTP_LOG("Request to %s has failed with the code: %d", r->http->hostname, r->response_code);
+#endif // HTTP_QUIET
+	  
+	}
 	
       } else if(c == '\n') {
 	r->key_len = 0;
@@ -25010,6 +25065,11 @@ HTTP_DEF bool http_next_header(Http_Request *r, Http_Header *header) {
 
 	r->buffer_pos  += i - 1;
 	r->buffer_size -= i - 1;
+
+#ifdef HTTP_DEBUG
+	HTTP_LOG("%s=%s", header->key, header->value);
+#endif // HTTP_DEBUG
+	
         return true;
       } else {
 	assert(r->value_len < sizeof(r->value) - 1);
@@ -25075,9 +25135,31 @@ HTTP_DEF bool http_next_body(Http_Request *r, char **data, size_t *data_len) {
     *data_len = r->buffer_size;
     r->buffer_size = 0;
 
+#ifndef HTTP_QUIET
+    if(!r->ok) {
+      HTTP_LOG("%.*s", (int) *data_len, *data);
+    }
+#endif // HTTP_QUIET
+
     return true;
   } else if(r->body == HTTP_REQUEST_BODY_CHUNKED) {
 
+    if(r->content_read > 0) {
+      size_t len = r->content_read;
+      if(len > r->buffer_size) len = r->buffer_size;
+
+      *data = r->buffer + r->buffer_pos;
+      *data_len = len;
+
+      r->buffer_pos += len;
+      r->buffer_size -= len;
+
+      r->content_read   -= len;
+      r->content_length += len;
+
+      return true;
+    }
+    
     for(size_t i=0;i<r->buffer_size;i++) {
       char c = r->buffer[r->buffer_pos + i];
 
@@ -25090,21 +25172,20 @@ HTTP_DEF bool http_next_body(Http_Request *r, char **data, size_t *data_len) {
 	r->state2 = HTTP_REQUEST_STATE_IDLE;
       }
 
-      if(r->content_read == 0) {
-	if(r->state2 == HTTP_REQUEST_STATE_IDLE) {
-	  assert(r->key_len < 4);
-	  r->key[r->key_len++] = c;
-	} else if(r->state2 == HTTP_REQUEST_STATE_RN) {
-
-	  // TODO: this may be incorrect
-	  if(r->key_len == 0) {
-	    /* HTTP_LOG("Failed to parse: '%.*s'", (int) r->key_len, r->key); */
-	    /* r->state = HTTP_REQUEST_STATE_ERROR; */
-	    /* return false; */
-
-	    continue;
+      if(r->state2 == HTTP_REQUEST_STATE_IDLE) {
+	if(r->key_len >= sizeof(r->key)) {
+	  HTTP_LOG("'%.*s' chunked length is too long", (int) r->key_len, r->key);
+	  r->state = HTTP_REQUEST_STATE_ERROR;
+	  return false;
+	}
+	r->key[r->key_len++] = c;	
+      } else if(r->state2 == HTTP_REQUEST_STATE_RN) {
+	if(r->key_len == 0) { // terminating \r\n, look for new length
+	  if(r->chunked_debug) {
+	    r->state = HTTP_REQUEST_STATE_DONE;
+	    return false;
 	  }
-
+	} else { // parse length
 	  if(!http_parse_hex_u64(r->key, r->key_len, &r->content_read)) {
 	    HTTP_LOG("Failed to parse: '%.*s'", (int) r->key_len, r->key);
 	    r->state = HTTP_REQUEST_STATE_ERROR;
@@ -25112,67 +25193,150 @@ HTTP_DEF bool http_next_body(Http_Request *r, char **data, size_t *data_len) {
 	  }
 	  r->key_len = 0;
 
-	  size_t advance = i + 1; // consume '\n'
-	  
-	  r->buffer_pos += advance;
-	  r->buffer_size -= advance;
 	  if(r->content_read == 0) {
-	    r->state = HTTP_REQUEST_STATE_DONE;
-	    return false;
-	  } else {
-	    goto start;
+	    r->chunked_debug = true;
 	  }
 	  
-	} else {
-	  // parse \r\n
-	}	      
+	  r->buffer_pos  += i + 1;
+	  r->buffer_size -= i + 1;
+	  goto start;
+	}
       } else {
+	//wait for \n
+      }
+      
+    }
 
-	if(r->state2 == HTTP_REQUEST_STATE_RN) {
+    r->buffer_size = 0;
+    
+    goto start;
+    
+/*     for(size_t i=0;(r->content_read < r->buffer_size) && i<r->buffer_size;i++) { */
+/*       char c = r->buffer[r->buffer_pos + i]; */
+
+/*       if(c == '\r') { */
+/* 	r->state2 = HTTP_REQUEST_STATE_R; */
+/*       } else if(c == '\n') { */
+/* 	if(r->state2 == HTTP_REQUEST_STATE_R) r->state2 = HTTP_REQUEST_STATE_RN; */
+/* 	else r->state2 = HTTP_REQUEST_STATE_IDLE; */
+/*       } else { */
+/* 	r->state2 = HTTP_REQUEST_STATE_IDLE; */
+/*       } */
+
+/*       if(r->content_read == 0) { */
+/* 	if(r->state2 == HTTP_REQUEST_STATE_IDLE) { */
+/* 	  if(r->key_len >= sizeof(r->key)) { */
+/* 	    HTTP_LOG("'%.*s' chunked length is too long", (int) r->key_len, r->key); */
+/* 	    r->state = HTTP_REQUEST_STATE_ERROR; */
+/* 	    return false; */
+/* 	  } */
+/* 	  r->key[r->key_len++] = c; */
+/* 	} else if(r->state2 == HTTP_REQUEST_STATE_RN) { */
+
+/* 	  // TODO: this may be incorrect */
+/* 	  if(r->key_len == 0) { */
+	    
+/* 	    //goto start; */
+
+/* 	    r->state = HTTP_REQUEST_STATE_DONE; */
+/* 	    return false; */
+/* 	  } */
+
+/* 	  if(!http_parse_hex_u64(r->key, r->key_len, &r->content_read)) { */
+/* 	    HTTP_LOG("Failed to parse: '%.*s'", (int) r->key_len, r->key); */
+/* 	    r->state = HTTP_REQUEST_STATE_ERROR; */
+/* 	    return false; */
+/* 	  } */
+/* 	  HTTP_LOG("0x%.*s == %llu", (int) r->key_len, r->key, r->content_read); */
+/* 	  r->key_len = 0; */
+
+/* 	  size_t advance = i + 1; // consume '\n' */
+/* 	  i++; */
 	  
-	  size_t len = i - 1;      // exclude '\r'
-	  size_t advance = i + 1;  // consume '\n'
+/* 	  r->buffer_pos += advance; */
+/* 	  r->buffer_size -= advance; */
+/* 	  if(r->content_read == 0) { */
+/* 	    r->state = HTTP_REQUEST_STATE_DONE; */
+/* 	    return false; */
+/* 	  } else { */
+/* 	    goto start; */
+/* 	  } */
+	  
+/* 	} else { */
+/* 	  // parse \r\n */
+/* 	}	       */
+/*       } else { */
 
-	  *data = r->buffer + r->buffer_pos;
-	  *data_len = len;
+/* 	if(r->state2 == HTTP_REQUEST_STATE_RN) { */
+	  
+/* 	  // exclude '\r' */
+/* 	  assert(i != 0); */
+/* 	  size_t len = i - 1; */
+	  
+/* 	  // consume '\n' */
+/* 	  size_t advance = i + 1; */
 
-	  r->buffer_pos += advance;
-	  r->buffer_size -= advance;
+/* 	  *data = r->buffer + r->buffer_pos; */
+/* 	  *data_len = len; */
 
-	  assert(r->content_read >= len);
-	  r->content_read -= len;
-	  r->content_length += len;
-	  return true;
-	} else {
-	  //do nothing
-	}	  
-      }
+/* 	  assert(r->buffer_size >= advance); */
+/* 	  r->buffer_size -= advance; */
+/* 	  r->buffer_pos += advance; */
+
+/* 	  if(r->content_read < len) { */
+/* 	    HTTP_LOG("ERROR: len too big. content_read: %llu, len: %llu", r->content_read, len); */
+/* 	    for(size_t j=0;j<len;j++) { */
+/* 	      char *d = r->buffer + r->buffer_pos + j; */
+/* 	      HTTP_LOG(" '%c' (%d)", *d, *d); */
+/* 	    } */
+/* 	    r->state = HTTP_REQUEST_STATE_ERROR; */
+/* 	    return false; */
+/* 	  } */
+
+/* 	  r->content_read   -= len; */
+/* 	  r->content_length += len; */
+
+/* #ifndef HTTP_QUIET */
+/* 	  if(!r->ok) { */
+/* 	    HTTP_LOG("%.*s", (int) *data_len, *data); */
+/* 	  } */
+/* #endif // HTTP_QUIET	   */
+/* 	  return true; */
+/* 	} else { */
+/* 	  //do nothing */
+/* 	}	   */
+/*       } */
       
-    }
+/*     } */
 
-    if(r->content_read == 0) {
-      r->buffer_size = 0;
+/*     if(r->content_read == 0) { */
+/*       r->buffer_size = 0; */
       
-      goto start;
-    } else {
+/*       goto start; */
+/*     } else { */
 
-      size_t len = r->buffer_size;
-      if(r->state2 == HTTP_REQUEST_STATE_R) {
-	len--;
-      }
+/*       size_t len = r->buffer_size; */
+/*       if(r->content_read < r->buffer_size && r->state2 == HTTP_REQUEST_STATE_R) { */
+/* 	len--; */
+/*       } */
 
-      *data = r->buffer + r->buffer_pos;
-      *data_len = len;
-
-      assert(r->content_read >= len);
-      r->content_read -= len;
-      r->content_length += len;
-
-      r->buffer_pos += r->buffer_size;
-      r->buffer_size -= r->buffer_size;
+/*       *data = r->buffer + r->buffer_pos; */
+/*       *data_len = len; */
       
-      return true;
-    }
+/*       r->content_read -= len; */
+/*       r->content_length += len; */
+
+/*       r->buffer_pos += r->buffer_size; */
+/*       r->buffer_size -= r->buffer_size; */
+
+/* #ifndef HTTP_QUIET */
+/*       if(!r->ok) { */
+/* 	HTTP_LOG("%.*s", (int) *data_len, *data); */
+/*       } */
+/* #endif // HTTP_QUIET */
+      
+/*       return true; */
+/*     } */
       
 
   } else {
@@ -25434,6 +25598,8 @@ IO_DEF bool io_delete_dir(const char *dir_path);
 
 IO_DEF bool io_exists(const char *file_path, bool *is_file);
 
+IO_DEF bool io_getenv(const char *name, char *buffer, size_t buffer_cap, size_t *buffer_len);
+
 ////////////////////////////////////////////////////////////////////////////////////////
 
 // Io_Dir
@@ -25642,6 +25808,26 @@ IO_DEF bool io_exists(const char *file_path, bool *is_file) {
   if(is_file) *is_file = !(attribs & FILE_ATTRIBUTE_DIRECTORY);
   return attribs != INVALID_FILE_ATTRIBUTES;
 }
+
+IO_DEF bool io_getenv(const char *name, char *buffer, size_t buffer_cap, size_t *buffer_len) {
+  if(buffer_len) *buffer_len = 0;
+  
+  DWORD size = GetEnvironmentVariable(name, buffer, (DWORD) buffer_cap);
+  if(size == 0) {
+    IO_LOG("Environment-Variable: '%s' does not exist", name);
+    return false;
+  }
+
+  if(buffer_len) *buffer_len = size;
+
+  if(size > buffer_cap) {
+    IO_LOG("Environment-Variable: '%s' does not find into %llu chars. %lu needed", name, buffer_cap, size);
+    return false;
+  }
+
+  return true;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////
 
 IO_DEF bool io_dir_open(Io_Dir *dir, const char *dir_path) {
@@ -25881,6 +26067,1572 @@ IO_DEF const char *io_last_error_cstr() {
 
 #endif //IO_H
 #endif // IO_DISABLE
+
+#ifdef JSON_ENABLE
+
+#ifndef JSON_H
+#define JSON_H
+
+#include <stdint.h>
+
+#ifndef JSON_DEF
+#  define JSON_DEF static inline
+#endif //JSON_DEF
+
+#ifdef JSON_IMPLEMENTATION
+#  define JSON_PARSER_IMPLEMENTATION
+#endif // JSON_IMPLEMENTATION
+
+// json_parser.h
+
+#ifndef JSON_PARSER_H
+#define JSON_PARSER_H
+
+#include <stdbool.h>
+#include <ctype.h>
+#include <assert.h>
+#include <string.h>
+#include <stdint.h>
+
+//https://www.json.org/json-de.html
+
+#ifndef JSON_PARSER_DEF
+#define JSON_PARSER_DEF static inline
+#endif //JSON_PARSER_DEF
+
+#ifndef JSON_PARSER_LOG
+#  ifdef JSON_PARSER_QUIET
+#    define JSON_PARSER_LOG(...)
+#  else
+#    include <stdio.h>
+#    define JSON_PARSER_LOG(...) fprintf(stderr, "JSON_PARSER_LOG: "); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n")
+#  endif // JSON_PARSER_QUIET
+#endif // JSON_PARSER_LOG
+
+typedef enum{
+  JSON_PARSER_CONST_TRUE = 0,
+  JSON_PARSER_CONST_FALSE,
+  JSON_PARSER_CONST_NULL,
+  JSON_PARSER_CONST_COUNT
+}Json_Parser_Const;
+
+typedef enum{
+  JSON_PARSER_RET_ABORT = 0,
+  JSON_PARSER_RET_CONTINUE = 1,
+  JSON_PARSER_RET_SUCCESS = 2,
+}Json_Parser_Ret;
+
+typedef enum{
+  JSON_PARSER_STATE_IDLE = 0,
+
+  // true, false, null
+  JSON_PARSER_STATE_CONST,
+  
+  // object
+  JSON_PARSER_STATE_OBJECT,
+  JSON_PARSER_STATE_OBJECT_DOTS,
+  JSON_PARSER_STATE_OBJECT_COMMA,
+  JSON_PARSER_STATE_OBJECT_KEY,
+
+  // array
+  JSON_PARSER_STATE_ARRAY,
+  JSON_PARSER_STATE_ARRAY_COMMA,
+
+  // string
+  JSON_PARSER_STATE_STRING,
+
+  // number
+  JSON_PARSER_STATE_NUMBER,
+  JSON_PARSER_STATE_NUMBER_DOT,
+
+  // \u1234
+  JSON_PARSER_STATE_ESCAPED_UNICODE,
+
+  // \\"
+  JSON_PARSER_STATE_ESCAPED_CHAR,
+  
+}Json_Parser_State;
+
+typedef enum{
+  JSON_PARSER_TYPE_NULL,
+  JSON_PARSER_TYPE_TRUE,
+  JSON_PARSER_TYPE_FALSE,
+  JSON_PARSER_TYPE_NUMBER,
+  JSON_PARSER_TYPE_STRING,
+  JSON_PARSER_TYPE_OBJECT,
+  JSON_PARSER_TYPE_ARRAY
+}Json_Parser_Type;
+
+JSON_PARSER_DEF const char *json_parser_type_name(Json_Parser_Type type) {
+  switch(type) {
+  case JSON_PARSER_TYPE_NULL:
+    return "JSON_PARSER_TYPE_NULL";
+  case JSON_PARSER_TYPE_TRUE:
+    return "JSON_PARSER_TYPE_TRUE";
+  case JSON_PARSER_TYPE_FALSE:
+    return "JSON_PARSER_TYPE_FALSE";
+  case JSON_PARSER_TYPE_NUMBER:
+    return "JSON_PARSER_TYPE_NUMBER";
+  case JSON_PARSER_TYPE_STRING:
+    return "JSON_PARSER_TYPE_STRING";
+  case JSON_PARSER_TYPE_OBJECT:
+    return "JSON_PARSER_TYPE_OBJECT";
+  case JSON_PARSER_TYPE_ARRAY:
+    return "JSON_PARSER_TYPE_ARRAY";
+  default:
+    return "UNKNOWN";	
+  }
+}
+
+#ifndef JSON_PARSER_STACK_CAP
+#  define JSON_PARSER_STACK_CAP 1024
+#endif //JSON_PARSER_STACK_CAP
+
+#ifndef JSON_PARSER_BUFFER_CAP
+#  define JSON_PARSER_BUFFER_CAP 8192
+#endif //JSON_PARSER_BUFFER_CAP
+
+#define JSON_PARSER_BUFFER 0
+#define JSON_PARSER_KEY_BUFFER 1
+
+typedef bool (*Json_Parser_On_Elem)(Json_Parser_Type type, const char *content, size_t content_size, void *arg, void **elem);
+typedef bool (*Json_Parser_On_Object_Elem)(void *object, const char *key_data, size_t key_size, void *elem, void *arg);
+typedef bool (*Json_Parser_On_Array_Elem)(void *array, void *elem, void *arg);
+
+typedef struct{
+  Json_Parser_On_Elem on_elem;
+  Json_Parser_On_Object_Elem on_object_elem;
+  Json_Parser_On_Array_Elem on_array_elem;
+  void *arg;
+
+  Json_Parser_State state;
+
+  Json_Parser_State stack[JSON_PARSER_STACK_CAP];
+  size_t stack_size;
+
+  void *parent_stack[JSON_PARSER_STACK_CAP];
+  size_t parent_stack_size;
+
+  char buffer[2][JSON_PARSER_BUFFER_CAP];
+  size_t buffer_size[2];
+
+  size_t konst_index;
+  Json_Parser_Const konst;
+}Json_Parser;
+
+// Public
+JSON_PARSER_DEF Json_Parser json_parser_from(Json_Parser_On_Elem on_elem, Json_Parser_On_Object_Elem on_object_elem, Json_Parser_On_Array_Elem on_array_elem, void *arg);
+JSON_PARSER_DEF Json_Parser_Ret json_parser_consume(Json_Parser *parser, const char *data, size_t size);
+
+// Private
+JSON_PARSER_DEF bool json_parser_on_parent(Json_Parser *parser, void *elem);
+
+#ifdef JSON_PARSER_IMPLEMENTATION
+
+static char *json_parser_const_cstrs[JSON_PARSER_CONST_COUNT] = {
+  [JSON_PARSER_CONST_TRUE] = "true",
+  [JSON_PARSER_CONST_FALSE] = "false",
+  [JSON_PARSER_CONST_NULL] = "null",
+};
+
+JSON_PARSER_DEF Json_Parser json_parser_from(Json_Parser_On_Elem on_elem, Json_Parser_On_Object_Elem on_object_elem, Json_Parser_On_Array_Elem on_array_elem, void *arg) {
+  Json_Parser parser = {0};
+  parser.state = JSON_PARSER_STATE_IDLE;
+  parser.on_elem = on_elem;
+  parser.on_object_elem = on_object_elem;
+  parser.on_array_elem = on_array_elem;
+  parser.stack_size = 0;
+  parser.arg = arg;
+  return parser;
+}
+
+JSON_PARSER_DEF Json_Parser_Ret json_parser_consume(Json_Parser *parser, const char *data, size_t size) {    
+  size_t konst_len;
+
+ consume:  
+  switch(parser->state) {
+  case JSON_PARSER_STATE_IDLE: {
+    idle:
+    if(!size)
+      return JSON_PARSER_RET_CONTINUE;
+
+    if(isspace(data[0])) {      
+      data++;
+      size--;
+      if(size) goto idle;
+    } else if(data[0] == '{') {
+
+      assert(parser->parent_stack_size < JSON_PARSER_STACK_CAP);
+      void **elem = &parser->parent_stack[parser->parent_stack_size];
+      if(parser->on_elem) {
+	if(!parser->on_elem(JSON_PARSER_TYPE_OBJECT, NULL, 0, parser->arg, elem)) {
+	  JSON_PARSER_LOG("Failure because 'on_elem' returned false");
+	  return JSON_PARSER_RET_ABORT;
+	}
+      }
+      if(!json_parser_on_parent(parser, *elem)) {
+	return JSON_PARSER_RET_ABORT;
+      }
+      parser->parent_stack_size++;
+	    
+      parser->state = JSON_PARSER_STATE_OBJECT;
+      data++;
+      size--;
+      if(size) goto consume;
+    } else if(data[0] == '[') {
+
+      assert(parser->parent_stack_size < JSON_PARSER_STACK_CAP);
+      void **elem = &parser->parent_stack[parser->parent_stack_size];
+      if(parser->on_elem) {
+	if(!parser->on_elem(JSON_PARSER_TYPE_ARRAY, NULL, 0, parser->arg, elem)) {
+	  JSON_PARSER_LOG("Failure because 'on_elem' returned false");
+	  return JSON_PARSER_RET_ABORT;
+	}
+      }
+      if(!json_parser_on_parent(parser, *elem)) {
+	return JSON_PARSER_RET_ABORT;
+      }
+      parser->parent_stack_size++;
+
+	    
+      parser->state = JSON_PARSER_STATE_ARRAY;
+      data++;
+      size--;
+      if(size) goto consume;
+    } else if(data[0] == '\"') {
+      parser->buffer_size[JSON_PARSER_BUFFER] = 0;
+      parser->state = JSON_PARSER_STATE_STRING;
+      data++;
+      size--;
+      if(size) goto consume;
+    } else if( isdigit(data[0]) ) {
+      parser->buffer_size[JSON_PARSER_BUFFER] = 0;
+      parser->state = JSON_PARSER_STATE_NUMBER;
+      goto consume;      
+    } else if( data[0] == '-' ) {
+      parser->buffer_size[JSON_PARSER_BUFFER] = 0;
+      assert(parser->buffer_size[JSON_PARSER_BUFFER] < JSON_PARSER_BUFFER_CAP);
+      parser->buffer[JSON_PARSER_BUFFER][parser->buffer_size[JSON_PARSER_BUFFER]++] = data[0];
+      parser->state = JSON_PARSER_STATE_NUMBER;
+      data++;
+      size--;
+      if(size) goto consume;
+    } else if( data[0] == 't') {
+      parser->state = JSON_PARSER_STATE_CONST;
+      parser->konst = JSON_PARSER_CONST_TRUE;
+      parser->konst_index = 1;      
+      data++;
+      size--;
+      if(size) goto consume;
+    } else if( data[0] == 'f') {
+      parser->state = JSON_PARSER_STATE_CONST;
+      parser->konst = JSON_PARSER_CONST_FALSE;
+      parser->konst_index = 1;      
+      data++;
+      size--;
+      if(size) goto consume;
+    } else if( data[0] == 'n') {
+      parser->state = JSON_PARSER_STATE_CONST;
+      parser->konst = JSON_PARSER_CONST_NULL;
+      parser->konst_index = 1;      
+      data++;
+      size--;
+      if(size) goto consume;
+    } else {
+      JSON_PARSER_LOG("Expected JsonValue but found: '%c'", data[0]);
+      return JSON_PARSER_RET_ABORT;
+    }
+
+    return JSON_PARSER_RET_CONTINUE;
+  } break;
+  case JSON_PARSER_STATE_OBJECT: {
+    object:
+    
+    if(!size)
+      return JSON_PARSER_RET_CONTINUE;
+    
+    if( isspace(data[0]) ) {
+      data++;
+      size--;
+      if(size) goto object;
+    } else if( data[0] == '\"') {
+      assert(parser->stack_size < JSON_PARSER_STACK_CAP);
+      parser->stack[parser->stack_size++] = JSON_PARSER_STATE_OBJECT_DOTS;
+
+      parser->buffer_size[JSON_PARSER_BUFFER] = 0;
+      parser->buffer_size[JSON_PARSER_KEY_BUFFER] = 0;
+      parser->state = JSON_PARSER_STATE_STRING;
+
+      data++;
+      size--;
+      if(size) goto consume;
+    } else if(data[0] == '}') {
+
+      parser->parent_stack_size--;
+	    
+      if(parser->stack_size) {
+	parser->state = parser->stack[parser->stack_size-- - 1];
+
+	data++;
+	size--;
+	if(size) goto consume;
+	return JSON_PARSER_RET_CONTINUE;
+      }
+      
+      return JSON_PARSER_RET_SUCCESS;
+    } else {
+      JSON_PARSER_LOG("Expected termination of JsonObject or a JsonString: '%c'", data[0]);
+      return JSON_PARSER_RET_ABORT;
+    }
+
+    return JSON_PARSER_RET_CONTINUE;
+  } break;
+  case JSON_PARSER_STATE_OBJECT_DOTS: {
+    object_dots:
+
+    if(!size)
+      return JSON_PARSER_RET_CONTINUE;
+
+    if( isspace(data[0]) ) {
+      data++;
+      size--;
+      if(size) goto object_dots;
+    } else if( data[0] == ':' ) {
+      assert(parser->stack_size < JSON_PARSER_STACK_CAP);
+      parser->stack[parser->stack_size++] = JSON_PARSER_STATE_OBJECT_COMMA;
+      
+      parser->state = JSON_PARSER_STATE_IDLE;
+
+      data++;
+      size--;
+      if(size) goto consume;
+    } else {
+      JSON_PARSER_LOG("Expected ':' between JsonString and JsonValue but found: '%c'", data[0]);
+      return JSON_PARSER_RET_ABORT;
+    }
+
+    return JSON_PARSER_RET_CONTINUE;
+  } break;
+  case JSON_PARSER_STATE_OBJECT_COMMA: {
+    object_comma:
+
+    if(!size)
+      return JSON_PARSER_RET_CONTINUE;
+
+    if( isspace(data[0])) {
+      data++;
+      size--;
+      if(size) goto object_comma;
+    } else if( data[0] == ',' ) {
+      parser->state = JSON_PARSER_STATE_OBJECT_KEY;
+     
+      data++;
+      size--;
+      if(size) goto consume;
+    } else if( data[0] == '}') {
+
+      parser->parent_stack_size--;
+		    
+      if(parser->stack_size) {
+	parser->state = parser->stack[parser->stack_size-- - 1];
+	data++;
+	size--;
+	if(size) goto consume;
+	return JSON_PARSER_RET_CONTINUE;
+      }
+      
+      return JSON_PARSER_RET_SUCCESS;
+    } else {
+      JSON_PARSER_LOG("Expected ',' or the termination of JsonObject but found: '%c'", data[0]);
+      return JSON_PARSER_RET_ABORT;
+    }
+    
+    return JSON_PARSER_RET_CONTINUE;
+  } break;
+  case JSON_PARSER_STATE_OBJECT_KEY: {
+    object_key:
+
+    if(!size)
+      return JSON_PARSER_RET_CONTINUE;
+
+    if( isspace(data[0]) ) {
+      data++;
+      size--;
+      if(size) goto object_key;
+    } else if( data[0] != '\"') {
+      JSON_PARSER_LOG("Expected JsonString but found: '%c'", data[0]);
+      return JSON_PARSER_RET_ABORT;
+    } else {
+      assert(parser->stack_size < JSON_PARSER_STACK_CAP);
+      parser->stack[parser->stack_size++] = JSON_PARSER_STATE_OBJECT_DOTS;
+      parser->buffer_size[JSON_PARSER_BUFFER] = 0;
+      parser->buffer_size[JSON_PARSER_KEY_BUFFER] = 0;
+      parser->state = JSON_PARSER_STATE_STRING;
+      
+      data++;
+      size--;
+      if(size) goto consume;
+    }
+
+    return JSON_PARSER_RET_CONTINUE;
+  } break;
+  case JSON_PARSER_STATE_ARRAY: {
+    array:
+
+    if(!size)
+      return JSON_PARSER_RET_CONTINUE;
+
+    if( isspace(data[0]) ) {
+      data++;
+      size--;
+      if(size) goto array;
+    } else if( data[0] == ']') {
+
+      parser->parent_stack_size--;
+		    
+      if(parser->stack_size) {
+	parser->state = parser->stack[parser->stack_size-- - 1];
+	data++;
+	size--;
+	if(size) goto consume;
+	return JSON_PARSER_RET_CONTINUE;
+      }
+	    
+      return JSON_PARSER_RET_SUCCESS;
+    } else {
+      assert(parser->stack_size < JSON_PARSER_STACK_CAP);
+      parser->stack[parser->stack_size++] = JSON_PARSER_STATE_ARRAY_COMMA;
+      parser->state = JSON_PARSER_STATE_IDLE;
+      
+      if(size) goto consume;
+    }
+
+    return JSON_PARSER_RET_CONTINUE;
+  } break;
+  case JSON_PARSER_STATE_ARRAY_COMMA: {
+    array_comma:
+
+    if(!size)
+      return JSON_PARSER_RET_CONTINUE;
+
+    if( isspace(data[0]) ) {
+      data++;
+      size--;
+      if(size) goto array_comma;
+    } else if(data[0] == ',') {
+      assert(parser->stack_size < JSON_PARSER_STACK_CAP);
+      parser->stack[parser->stack_size++] = JSON_PARSER_STATE_ARRAY_COMMA;
+      parser->state = JSON_PARSER_STATE_IDLE;
+      
+      data++;
+      size--;
+      if(size) goto consume;
+    } else if(data[0] == ']') {
+
+      parser->parent_stack_size--;
+	    
+      if(parser->stack_size) {
+	parser->state = parser->stack[parser->stack_size-- - 1];
+	data++;
+	size--;
+	if(size) goto consume;
+	return JSON_PARSER_RET_CONTINUE;
+      }
+
+      return JSON_PARSER_RET_SUCCESS;
+    } else {
+      JSON_PARSER_LOG("Expected ',' or the termination of JsonArray but found: '%c'", data[0]);
+      return JSON_PARSER_RET_ABORT;
+    }
+    return JSON_PARSER_RET_CONTINUE;
+  } break;
+  case JSON_PARSER_STATE_NUMBER: {
+    number:
+    
+    if(!size)
+      return JSON_PARSER_RET_CONTINUE;
+
+    if( isdigit(data[0]) ) {
+      assert(parser->buffer_size[JSON_PARSER_BUFFER] < JSON_PARSER_BUFFER_CAP);
+      parser->buffer[JSON_PARSER_BUFFER][parser->buffer_size[JSON_PARSER_BUFFER]++] = data[0];	    
+      data++;
+      size--;
+      if(size) goto number;
+    } else if( data[0] == '.') {
+      assert(parser->buffer_size[JSON_PARSER_BUFFER] < JSON_PARSER_BUFFER_CAP);
+      parser->buffer[JSON_PARSER_BUFFER][parser->buffer_size[JSON_PARSER_BUFFER]++] = data[0];
+      parser->state = JSON_PARSER_STATE_NUMBER_DOT;
+      data++;
+      size--;
+      if(size) goto consume;
+    } else {
+
+      void *elem = NULL;
+      if(parser->on_elem) {
+	if(!parser->on_elem(JSON_PARSER_TYPE_NUMBER, parser->buffer[JSON_PARSER_BUFFER], parser->buffer_size[JSON_PARSER_BUFFER], parser->arg, &elem)) {
+	  JSON_PARSER_LOG("Failure because 'on_elem' returned false");
+	  return JSON_PARSER_RET_ABORT;
+	}	
+      }
+      if(!json_parser_on_parent(parser, elem)) {
+	return JSON_PARSER_RET_ABORT;
+      }
+
+      if(parser->stack_size) {
+	parser->state = parser->stack[parser->stack_size-- - 1];
+
+	if(size) goto consume;
+	return JSON_PARSER_RET_CONTINUE;
+      }
+      
+      return JSON_PARSER_RET_SUCCESS;
+    }
+
+    return JSON_PARSER_RET_CONTINUE;
+  } break;
+  case JSON_PARSER_STATE_NUMBER_DOT: {
+    number_dot:
+
+    if(!size)
+      return JSON_PARSER_RET_CONTINUE;
+
+    if( isspace(data[0]) ) {
+      assert(parser->buffer_size[JSON_PARSER_BUFFER] < JSON_PARSER_BUFFER_CAP);
+      parser->buffer[JSON_PARSER_BUFFER][parser->buffer_size[JSON_PARSER_BUFFER]++] = data[0];
+      data++;
+      size--;
+      if(size) goto number_dot;
+    } else if( isdigit(data[0])) {
+      assert(parser->buffer_size[JSON_PARSER_BUFFER] < JSON_PARSER_BUFFER_CAP);
+      parser->buffer[JSON_PARSER_BUFFER][parser->buffer_size[JSON_PARSER_BUFFER]++] = data[0];
+      data++;
+      size--;
+      if(size) goto number_dot;
+    } else {
+
+      void *elem = NULL;
+      if(parser->on_elem) {
+	if(!parser->on_elem(JSON_PARSER_TYPE_NUMBER, parser->buffer[JSON_PARSER_BUFFER], parser->buffer_size[JSON_PARSER_BUFFER], parser->arg, &elem)) {
+	  JSON_PARSER_LOG("Failure because 'on_elem' returned false");
+	  return JSON_PARSER_RET_ABORT;
+	}
+      }
+      if(!json_parser_on_parent(parser, elem)) {
+	return JSON_PARSER_RET_ABORT;
+      }
+
+      if(parser->stack_size) {
+	parser->state = parser->stack[parser->stack_size-- - 1];
+
+	if(size) goto consume;
+	return JSON_PARSER_RET_CONTINUE;
+      }
+      
+      return JSON_PARSER_RET_SUCCESS;
+    }
+
+    return JSON_PARSER_RET_CONTINUE;
+  } break;
+  case JSON_PARSER_STATE_STRING: {
+    _string:
+
+    if(!size)
+      return JSON_PARSER_RET_CONTINUE;
+
+    if( data[0] == '\"') {
+
+      void *elem = NULL;
+      if(parser->on_elem ) {
+	if(!parser->stack_size ||
+	   (parser->stack[parser->stack_size-1] !=
+	    JSON_PARSER_STATE_OBJECT_DOTS)) {
+	  if(!parser->on_elem(JSON_PARSER_TYPE_STRING, parser->buffer[JSON_PARSER_BUFFER], parser->buffer_size[JSON_PARSER_BUFFER], parser->arg, &elem)) {
+	    JSON_PARSER_LOG("Failure because 'on_elem' returned false");
+	    return JSON_PARSER_RET_ABORT;
+	  }
+	  
+	}
+      }
+      if(!json_parser_on_parent(parser, elem)) {
+	return JSON_PARSER_RET_ABORT;
+      }
+	    
+      if(parser->stack_size) {
+	parser->state = parser->stack[parser->stack_size-- - 1];
+
+	data++;
+	size--;
+	if(size) goto consume;
+	return JSON_PARSER_RET_CONTINUE;
+      }
+	    
+      return JSON_PARSER_RET_SUCCESS;
+    } else if(data[0] == '\\') {
+
+      assert(parser->buffer_size[JSON_PARSER_BUFFER] < JSON_PARSER_BUFFER_CAP);
+      parser->buffer[JSON_PARSER_BUFFER][parser->buffer_size[JSON_PARSER_BUFFER]++] = data[0];
+
+      if(parser->stack_size &&
+	 parser->stack[parser->stack_size-1] == JSON_PARSER_STATE_OBJECT_DOTS) {
+	assert(parser->buffer_size[JSON_PARSER_KEY_BUFFER] < JSON_PARSER_BUFFER_CAP);
+	parser->buffer[JSON_PARSER_KEY_BUFFER][parser->buffer_size[JSON_PARSER_KEY_BUFFER]++] = data[0];
+      }
+      
+      data++;
+      size--;
+
+      parser->state = JSON_PARSER_STATE_ESCAPED_CHAR;
+
+      if(size) goto consume;
+      return JSON_PARSER_RET_CONTINUE;
+    } else if( data[0] != '\\') {
+	  
+      assert(parser->buffer_size[JSON_PARSER_BUFFER] < JSON_PARSER_BUFFER_CAP);
+      parser->buffer[JSON_PARSER_BUFFER][parser->buffer_size[JSON_PARSER_BUFFER]++] = data[0];
+
+      if(parser->stack_size &&
+	 parser->stack[parser->stack_size-1] == JSON_PARSER_STATE_OBJECT_DOTS) {
+	assert(parser->buffer_size[JSON_PARSER_KEY_BUFFER] < JSON_PARSER_BUFFER_CAP);
+	parser->buffer[JSON_PARSER_KEY_BUFFER][parser->buffer_size[JSON_PARSER_KEY_BUFFER]++] = data[0];
+      }
+	    
+      data++;
+      size--;
+      if(size) goto _string;
+    } else {
+      JSON_PARSER_LOG("Expected termination of JsonString but found: '%c'", data[0]);
+      return JSON_PARSER_RET_ABORT;
+    }
+
+    return JSON_PARSER_RET_CONTINUE;
+  } break;
+  case JSON_PARSER_STATE_CONST: {
+    konst:
+    konst_len = strlen(json_parser_const_cstrs[parser->konst]);
+
+    if(!size)
+      return JSON_PARSER_RET_CONTINUE;
+
+    if(parser->konst_index == konst_len) {
+
+      void *elem = NULL;
+      if(parser->on_elem) {
+	Json_Parser_Type type;
+	if(parser->konst == JSON_PARSER_CONST_TRUE) {
+	  type = JSON_PARSER_TYPE_TRUE;
+	} else if(parser->konst == JSON_PARSER_CONST_FALSE) {
+	  type = JSON_PARSER_TYPE_FALSE;
+	} else {
+	  type = JSON_PARSER_TYPE_NULL;
+	}
+
+	if(!parser->on_elem(type, NULL, 0, parser->arg, &elem)) {
+	  JSON_PARSER_LOG("Failure because 'on_elem' returned false");
+	  return JSON_PARSER_RET_ABORT;
+	}
+      }
+      if(!json_parser_on_parent(parser, elem)) {
+	return JSON_PARSER_RET_ABORT;
+      }
+
+      if(parser->stack_size) {
+	parser->state = parser->stack[parser->stack_size-- - 1];
+
+	if(size) goto consume;
+	return JSON_PARSER_RET_CONTINUE;
+      }
+	    
+      return JSON_PARSER_RET_SUCCESS;
+    }
+
+    if( data[0] == json_parser_const_cstrs[parser->konst][parser->konst_index] ) {	    
+      data++;
+      size--;
+      parser->konst_index++;
+      if(size) goto konst;
+    } else {
+      JSON_PARSER_LOG("Expected 'true', 'false' or 'null'. The string was not terminated correctly with: '%c'.\n"
+		      "       Correct would be '%c'.", data[0], json_parser_const_cstrs[parser->konst][parser->konst_index]);
+      return JSON_PARSER_RET_ABORT;
+    }
+
+    return JSON_PARSER_RET_CONTINUE;
+  } break;
+  case JSON_PARSER_STATE_ESCAPED_UNICODE: {
+    escaped_char:
+
+    if(!size)
+      return JSON_PARSER_RET_CONTINUE;
+
+    if(parser->konst_index > 0) {
+
+      assert(parser->buffer_size[JSON_PARSER_BUFFER] < JSON_PARSER_BUFFER_CAP);
+      parser->buffer[JSON_PARSER_BUFFER][parser->buffer_size[JSON_PARSER_BUFFER]++] = data[0];
+
+      if(parser->stack_size &&
+	 parser->stack[parser->stack_size-1] == JSON_PARSER_STATE_OBJECT_DOTS) {
+	assert(parser->buffer_size[JSON_PARSER_KEY_BUFFER] < JSON_PARSER_BUFFER_CAP);
+	parser->buffer[JSON_PARSER_KEY_BUFFER][parser->buffer_size[JSON_PARSER_KEY_BUFFER]++] = data[0];
+      }
+
+      parser->konst_index--;
+      data++;
+      size--;
+
+      if(size) goto escaped_char;
+      return JSON_PARSER_RET_CONTINUE;
+    } else {
+      parser->state = JSON_PARSER_STATE_STRING;
+      goto consume;
+    }
+    
+  } break;
+  case JSON_PARSER_STATE_ESCAPED_CHAR: {
+
+    if(!size) return JSON_PARSER_RET_CONTINUE;
+        
+    char c = data[0];
+
+    if(c == '\"') c = '\"';
+    else if(c == '\\') c = '\\';
+    else if(c == '/') c = '/';
+    else if(c == 'b') c = '\b';
+    else if(c == 'f') c = '\f';
+    else if(c == 'n') c = '\n';
+    else if(c == 'r') c = '\r';
+    else if(c == 't') c = 't';
+    else if(c == 'u') {
+      parser->konst_index = 4;
+      parser->state = JSON_PARSER_STATE_ESCAPED_UNICODE;
+
+      assert(parser->buffer_size[JSON_PARSER_BUFFER] < JSON_PARSER_BUFFER_CAP);
+      parser->buffer[JSON_PARSER_BUFFER][parser->buffer_size[JSON_PARSER_BUFFER]++] = c;
+
+      if(parser->stack_size &&
+	 parser->stack[parser->stack_size-1] == JSON_PARSER_STATE_OBJECT_DOTS) {
+	assert(parser->buffer_size[JSON_PARSER_KEY_BUFFER] < JSON_PARSER_BUFFER_CAP);
+	parser->buffer[JSON_PARSER_KEY_BUFFER][parser->buffer_size[JSON_PARSER_KEY_BUFFER]++] = c;
+      }
+	
+      data++;
+      size--;
+
+      if(size) goto consume;
+      return JSON_PARSER_RET_CONTINUE;
+    } else {
+      JSON_PARSER_LOG("Escape-haracter: '%c' is not supported in JsonString", c);
+      return JSON_PARSER_RET_ABORT;
+    }
+
+    assert(parser->buffer_size[JSON_PARSER_BUFFER] < JSON_PARSER_BUFFER_CAP);
+    parser->buffer[JSON_PARSER_BUFFER][parser->buffer_size[JSON_PARSER_BUFFER]++] = c;
+
+    if(parser->stack_size &&
+       parser->stack[parser->stack_size-1] == JSON_PARSER_STATE_OBJECT_DOTS) {
+      assert(parser->buffer_size[JSON_PARSER_KEY_BUFFER] < JSON_PARSER_BUFFER_CAP);
+      parser->buffer[JSON_PARSER_KEY_BUFFER][parser->buffer_size[JSON_PARSER_KEY_BUFFER]++] = c;
+    }
+
+    parser->state = JSON_PARSER_STATE_STRING;
+    data++;
+    size--;
+    if(size) goto consume;
+    return JSON_PARSER_RET_CONTINUE;
+
+  } break;
+  default: {
+    JSON_PARSER_LOG("unknown state in json_parser_consume");
+    return JSON_PARSER_RET_ABORT;
+  } break;
+  }
+}
+
+JSON_PARSER_DEF bool json_parser_on_parent(Json_Parser *parser, void *elem) {
+    
+  void *parent = NULL;
+  if(parser->parent_stack_size) {
+    parent = parser->parent_stack[parser->parent_stack_size - 1];
+  } 
+
+  if(!parser->stack_size)
+    return true;
+
+  Json_Parser_State state = parser->stack[parser->stack_size - 1];
+    
+  if((state == JSON_PARSER_STATE_OBJECT ||
+      //state == JSON_PARSER_STATE_OBJECT_DOTS ||
+      state == JSON_PARSER_STATE_OBJECT_COMMA ||
+      state == JSON_PARSER_STATE_OBJECT_KEY) &&
+     parser->on_object_elem) {	
+    if(!parser->on_object_elem(parent, parser->buffer[JSON_PARSER_KEY_BUFFER], parser->buffer_size[JSON_PARSER_KEY_BUFFER], elem, parser->arg)) {
+      JSON_PARSER_LOG("Failure because 'on_object_elem' returned false");
+      return false;
+      
+    }
+	
+  } else if( (state == JSON_PARSER_STATE_ARRAY ||
+	      state == JSON_PARSER_STATE_ARRAY_COMMA) &&
+	     parser->on_array_elem) {	
+    if(!parser->on_array_elem(parent, elem, parser->arg)) {
+      JSON_PARSER_LOG("Failure because 'on_array_elem' returned false");
+      return false;      
+    }
+  }
+
+  return true;
+}
+
+#endif //JSON_PARSER_IMPLEMENTATION
+
+#endif //JSON_PARSER_H
+
+
+typedef enum{
+  JSON_KIND_NONE = 0,
+  JSON_KIND_NULL = 1,
+  JSON_KIND_FALSE = 2,
+  JSON_KIND_TRUE,
+  JSON_KIND_NUMBER,
+  JSON_KIND_STRING,
+  JSON_KIND_ARRAY,
+  JSON_KIND_OBJECT
+}Json_Kind;
+
+#ifndef JSON_ARRAY_PAGE_CAP
+#  define JSON_ARRAY_PAGE_CAP 32
+#endif //JSON_ARAY_PAGE_CAP
+
+struct Json_Array_Page {
+  void *data;
+  uint64_t len;
+
+  struct Json_Array_Page *next;
+};
+
+typedef struct Json_Array_Page Json_Array_Page;
+
+typedef struct{
+  uint64_t len;
+  Json_Array_Page *first;
+  Json_Array_Page *current;
+}Json_Array;
+
+typedef void * Json_Object_t;
+
+typedef struct{
+  Json_Kind kind;
+  union{
+    double doubleval;
+    const char *stringval;
+    Json_Array *arrayval;
+    Json_Object_t objectval; // Json_Object
+  }as;
+}Json;
+
+// hashtable.h :
+
+#include <stdint.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
+#include <xmmintrin.h>
+
+// Rewritten version of this hashtable: https://github.com/exebook/hashdict.c/tree/master
+
+typedef enum{
+  JSON_HASHTABLE_RET_ERROR = 0,
+  JSON_HASHTABLE_RET_COLLISION,
+  JSON_HASHTABLE_RET_SUCCESS,
+}Json_Hashtable_Ret;
+
+typedef bool (*Json_Hashtable_Func)(char *key, size_t key_len, Json *value, size_t index, void *userdata);
+
+typedef struct Json_Hashtable_Key Json_Hashtable_Key;
+
+struct Json_Hashtable_Key{
+  Json_Hashtable_Key *next;
+  char *key;
+  size_t len;
+  Json value;
+};
+
+JSON_DEF bool json_hashtable_key_init(Json_Hashtable_Key **k, const char *key, size_t key_len);
+JSON_DEF void json_hashtable_key_free(Json_Hashtable_Key *k);
+
+typedef struct{
+  Json_Hashtable_Key **table;
+  size_t len;
+  size_t count;
+  double growth_treshold;
+  double growth_factor;
+  Json *value;
+}Json_Hashtable;
+
+JSON_DEF bool json_hashtable_init(Json_Hashtable *ht, size_t initial_len);
+JSON_DEF Json_Hashtable_Ret json_hashtable_add(Json_Hashtable *ht, const char *key, size_t key_len);
+JSON_DEF bool json_hashtable_find(Json_Hashtable *ht, const char *key, size_t key_len);
+JSON_DEF bool json_hashtable_resize(Json_Hashtable *ht, size_t new_len);
+JSON_DEF void json_hashtable_reinsert_when_resizing(Json_Hashtable *ht, Json_Hashtable_Key *k2);
+JSON_DEF void json_hashtable_for_each(Json_Hashtable *ht, Json_Hashtable_Func func, void *userdata);
+JSON_DEF void json_hashtable_free(Json_Hashtable *ht);
+
+typedef Json_Hashtable *Json_Object;
+
+typedef struct{
+  size_t count;
+  FILE *f;
+}Json_Object_Data;
+
+typedef struct{
+  Json json;
+  Json array;
+  bool got_root;
+
+  Json_Parser parser;
+}Json_Context;
+
+// json.h
+
+bool json_context_init(Json_Context *ctx);
+Json_Parser_Ret json_context_consume(Json_Context *ctx, const char *data, size_t data_len);
+void json_context_free(Json_Context *ctx);
+
+JSON_DEF const char *json_kind_name(Json_Kind kind);
+
+JSON_DEF bool json_object_fprint(char *key, size_t key_len, Json *json, size_t index, void *_userdata);
+JSON_DEF bool json_object_init(Json_Object_t *__ht);
+JSON_DEF bool json_object_append(Json_Object_t *_ht, const char *key, Json *json);
+JSON_DEF bool json_object_append2(Json_Object_t *_ht, const char *key, size_t key_len, Json *json);
+JSON_DEF bool json_object_has(Json_Object_t *_ht, const char *key);
+JSON_DEF Json json_object_get(Json_Object_t *_ht, const char *key);
+JSON_DEF void json_object_free(Json_Object_t *_ht);
+
+JSON_DEF bool json_string_init(char **string, const char *cstr);
+JSON_DEF bool json_string_init2(char **string, const char *cstr, size_t cstr_len);
+JSON_DEF void json_string_free(char *string);
+
+JSON_DEF bool json_array_init(Json_Array **array);
+JSON_DEF bool json_array_append(Json_Array *array, Json *json);
+JSON_DEF void json_array_free(Json_Array *array);
+JSON_DEF Json json_array_get(Json_Array *array, uint64_t pos);
+
+JSON_DEF void json_fprint(FILE *f, Json json);
+JSON_DEF void json_free(Json json);
+
+#define json_array_len(array) (array)->len
+#define json_object_len(object) ((Json_Hashtable *) (object))->count
+
+#define json_null() (Json) {.kind = JSON_KIND_NULL }
+#define json_false() (Json) {.kind = JSON_KIND_FALSE }
+#define json_true() (Json) {.kind = JSON_KIND_TRUE }
+#define json_number(d) (Json) {.kind = JSON_KIND_NUMBER, .as.doubleval = d }
+
+#ifdef JSON_IMPLEMENTATION
+
+#include <stdio.h>
+
+static inline void *json_malloc_stub(void *userdata, size_t bytes) {
+  (void) userdata;
+  return malloc(bytes);
+}
+
+static inline void json_free_stub(void *userdata, void *ptr) {
+  (void) userdata;
+  free(ptr);
+}
+
+void *json_allocator_userdata = NULL;
+void* (*json_allocator_alloc)(void *userdata, size_t bytes) = json_malloc_stub;
+void (*json_allocator_free)(void *userdata, void* ptr) = json_free_stub;
+
+bool json_on_elem_json(Json_Parser_Type type, const char *content, size_t content_size, void *arg, void **elem) {
+
+  Json_Context *ctx = (Json_Context *) arg;
+  
+  Json json;
+  
+  switch(type) {
+  case JSON_PARSER_TYPE_OBJECT: {
+    json.kind = JSON_KIND_OBJECT;
+    if(!json_object_init(&json.as.objectval)) return false;    
+  } break;
+  case JSON_PARSER_TYPE_STRING: {
+    json.kind = JSON_KIND_STRING;
+    if(!json_string_init2((char **) &json.as.stringval, content, content_size)) return false;
+  } break;
+  case JSON_PARSER_TYPE_NUMBER: {
+    double num = strtod(content, NULL);
+    json = json_number(num);
+  } break;
+  case JSON_PARSER_TYPE_ARRAY: {
+    json.kind = JSON_KIND_ARRAY;
+    if(!json_array_init(&json.as.arrayval)) return false;        
+  } break;
+  case JSON_PARSER_TYPE_FALSE: {
+    json = json_false();
+  } break;
+  case JSON_PARSER_TYPE_TRUE: {
+    json = json_true();
+  } break;
+  case JSON_PARSER_TYPE_NULL: {
+    json = json_null();
+  } break;
+  default: {
+    printf("INFO: unexpected type: %s\n", json_parser_type_name(type) );
+    return false;
+  }
+  }
+
+  if(!ctx->got_root) {
+    ctx->json = json;
+    ctx->got_root = true;
+  }
+
+  *elem = (void *) ctx->array.as.arrayval->len;
+
+  if(!json_array_append(ctx->array.as.arrayval, &json)) {
+    return false;
+  }
+
+  return true;
+}
+
+bool json_on_object_elem_json(void *object, const char *key_data, size_t key_size, void *elem, void *arg) {
+  
+  Json_Context *ctx = (Json_Context *) arg;
+
+  uint64_t json_index = *(uint64_t *) &object;
+  uint64_t smol_index = *(uint64_t *) &elem;
+
+  Json json = json_array_get(ctx->array.as.arrayval, json_index);
+  Json smol = json_array_get(ctx->array.as.arrayval, smol_index);
+  
+  if(!json_object_append2(json.as.objectval, key_data, key_size, &smol)) {
+    return false;
+  }
+
+  return true;
+}
+
+bool json_on_array_elem_json(void *array, void *elem, void *arg) {
+  (void) arg;
+
+  Json_Context *ctx = (Json_Context *) arg;
+
+  uint64_t json_index = *(uint64_t *) &array;
+  uint64_t smol_index = *(uint64_t *) &elem;
+
+  Json json = json_array_get(ctx->array.as.arrayval, json_index);
+  Json smol = json_array_get(ctx->array.as.arrayval, smol_index);
+  
+  if(!json_array_append(json.as.arrayval, &smol)) {
+    return false;
+  }
+
+  return true;
+}
+
+bool json_context_init(Json_Context *ctx) {  
+  ctx->got_root = false;
+
+  ctx->array.kind = JSON_KIND_ARRAY;
+  if(!json_array_init(&ctx->array.as.arrayval)) {
+    return false;
+  }
+  
+  ctx->parser = json_parser_from(json_on_elem_json, json_on_object_elem_json, json_on_array_elem_json, ctx);
+
+  return true;
+}
+
+Json_Parser_Ret json_context_consume(Json_Context *ctx, const char *data, size_t data_len) {
+  return json_parser_consume(&ctx->parser, data, data_len);
+}
+
+void json_context_free(Json_Context *ctx) {  
+  json_free(ctx->json);
+  json_array_free(ctx->array.as.arrayval);
+}
+
+JSON_DEF const char *json_kind_name(Json_Kind kind) {
+  switch(kind) {
+  case JSON_KIND_NONE: return "NONE";
+  case JSON_KIND_NULL: return "NULL";
+  case JSON_KIND_TRUE: return "TRUE";
+  case JSON_KIND_FALSE: return "FALSE";
+  case JSON_KIND_NUMBER: return "NUMBER";
+  case JSON_KIND_STRING: return "STRING";
+  case JSON_KIND_ARRAY: return "ARRAY";
+  case JSON_KIND_OBJECT: return "OBJECT";
+  default: return NULL;
+  }
+}
+
+JSON_DEF bool json_object_init(Json_Object_t *__ht) {
+
+  Json_Hashtable **_ht = (Json_Hashtable **) __ht;
+  
+  Json_Hashtable *ht = json_allocator_alloc(json_allocator_userdata, sizeof(Json_Hashtable));
+  if(!ht) {
+    return false;
+  }
+
+  if(!json_hashtable_init(ht, 0)) {
+    return false;
+  }
+
+  *_ht = ht;
+
+  return true;
+}
+
+JSON_DEF bool json_object_append(Json_Object_t *_ht, const char *key, Json *json) {
+
+  Json_Hashtable *ht = (Json_Hashtable *) _ht;
+
+  Json_Hashtable_Ret ret = json_hashtable_add(ht, key, strlen(key));
+  if(ret == JSON_HASHTABLE_RET_ERROR) {
+    return false;
+  }
+  *ht->value = *json;
+  
+  return true;
+}
+
+JSON_DEF bool json_object_append2(Json_Object_t *_ht, const char *key, size_t key_len, Json *json) {
+  Json_Hashtable *ht = (Json_Hashtable *) _ht;
+
+  Json_Hashtable_Ret ret = json_hashtable_add(ht, key, key_len);
+  if(ret == JSON_HASHTABLE_RET_ERROR) {
+    return false;
+  }
+  *ht->value = *json;
+  
+  return true;
+  
+}
+
+JSON_DEF bool json_object_has(Json_Object_t *_ht, const char *key) {
+  Json_Hashtable *ht = (Json_Hashtable *) _ht;
+  return json_hashtable_find(ht, key, strlen(key));
+}
+
+JSON_DEF Json json_object_get(Json_Object_t *_ht, const char *key) {
+  Json_Hashtable *ht = (Json_Hashtable *) _ht;
+  json_hashtable_find(ht, key, strlen(key)); // no checking
+  return *ht->value;
+}
+
+JSON_DEF void json_object_free(Json_Object_t *_ht) {
+  json_hashtable_free((Json_Hashtable *) _ht);
+}
+
+JSON_DEF bool json_string_init(char **string, const char *cstr) {
+  size_t cstr_len = strlen(cstr) + 1;
+  *string = json_allocator_alloc(json_allocator_userdata, cstr_len);
+  if(!(*string)) {
+    return false;
+  }
+  memcpy(*string, cstr, cstr_len);
+
+  return true;
+}
+
+JSON_DEF bool json_string_init2(char **string, const char *cstr, size_t cstr_len) {
+  *string = json_allocator_alloc(json_allocator_userdata, cstr_len + 1);
+  if(!(*string)) {
+    return false;
+  }
+  memcpy(*string, cstr, cstr_len);
+  (*string)[cstr_len] = 0;
+  return true;  
+}
+
+JSON_DEF void json_string_free(char *string) {
+  json_allocator_free(json_allocator_userdata, string);
+}
+    
+JSON_DEF bool json_array_init(Json_Array **_array) {
+
+  Json_Array *array = json_allocator_alloc(json_allocator_userdata, sizeof(Json_Array));
+  if(!array) {
+    return false;
+  }
+
+  Json_Array_Page *page = json_allocator_alloc(json_allocator_userdata, sizeof(Json_Array_Page));
+  if(!page) {
+    return false;
+  }
+  
+  page->len = 0;
+  page->next = NULL;
+  page->data = json_allocator_alloc(json_allocator_userdata, JSON_ARRAY_PAGE_CAP * sizeof(Json) );
+  if(!page->data) {
+    return false;
+  }
+
+  array->len = 0;
+  array->first = page;
+  array->current = page;
+
+  *_array = array;
+
+  return true;
+}
+
+JSON_DEF bool json_array_append(Json_Array *array, Json *json) {
+
+  Json_Array_Page *page = array->current;
+  if(page->len >= JSON_ARRAY_PAGE_CAP) {
+    //append new page
+
+    Json_Array_Page *new_page = json_allocator_alloc(json_allocator_userdata, sizeof(Json_Array_Page));
+    if(!new_page) {
+      return false;
+    }
+  
+    new_page->len = 0;
+    new_page->next = NULL;
+    new_page->data = json_allocator_alloc(json_allocator_userdata, JSON_ARRAY_PAGE_CAP * sizeof(Json) );
+    if(!new_page->data) {
+      return false;
+    }
+
+    page->next = new_page;
+    array->current= new_page;
+    page = new_page;
+  }
+
+  void *ptr = (unsigned char *) page->data + sizeof(Json) * page->len++;
+  memcpy(ptr, json, sizeof(Json));
+  array->len++;
+  
+  return true;
+}
+
+JSON_DEF void json_array_free(Json_Array *array) {
+
+  Json_Array_Page *page = array->first;
+  while(page) {
+    Json_Array_Page *next_page = page->next;
+    json_allocator_free(json_allocator_userdata, page->data);
+    json_allocator_free(json_allocator_userdata, page);
+    page = next_page;
+  }
+  
+  json_allocator_free(json_allocator_userdata, array);
+}
+
+// 10
+
+//  9 / 4 = 2
+//  9 % 4 = 2
+
+//    indices  -->
+//   
+//   [0] [1] [2] [3]
+//    0   1   2   3  [0]
+//    4   5   6   7  [1]    slots
+//    8   9  10  11  [2]      |
+//   12  13  14  15  [3]      v
+//   13  14  15  16  [4]
+
+JSON_DEF Json json_array_get(Json_Array *array, uint64_t pos) {
+  uint64_t slot = pos / JSON_ARRAY_PAGE_CAP;
+  uint64_t index = pos % JSON_ARRAY_PAGE_CAP;
+
+  Json_Array_Page *page = array->first;
+  for(uint64_t i=0;i<slot;i++) page = page->next;
+
+  return *(Json *) ( ((unsigned char *) page->data) + sizeof(Json) * index);
+}
+
+JSON_DEF bool json_object_fprint(char *key, size_t key_len, Json *json, size_t index, void *_userdata) {
+  Json_Object_Data *data = (Json_Object_Data *) _userdata;
+
+  fprintf(data->f, "\"%.*s\": ", (int) key_len, key);
+  json_fprint(data->f, *json);
+  if(index != data->count - 1) fprintf(data->f, ", ");
+  
+  return true;
+}
+
+JSON_DEF void json_fprint(FILE *f, Json json) {
+  switch(json.kind) {
+  case JSON_KIND_NULL: {
+    fprintf(f,"null");
+  } break;
+  case JSON_KIND_FALSE: {
+    fprintf(f,"false");
+  } break;
+  case JSON_KIND_TRUE: {
+    fprintf(f,"true");
+  } break;
+  case JSON_KIND_NUMBER : {
+    fprintf(f,"%2f", json.as.doubleval);
+  } break;
+  case JSON_KIND_STRING: {
+    fprintf(f,"\"%s\"", json.as.stringval);
+  } break;
+  case JSON_KIND_ARRAY: {
+    fprintf(f,"[");
+    Json_Array *array = json.as.arrayval;
+    for(size_t i=0;i<array->len;i++) {
+      Json elem = json_array_get(array, i);
+      json_fprint(f, elem);
+      if(i != array->len - 1) fprintf(f,", ");
+    }    
+    fprintf(f,"]");
+  } break;
+  case JSON_KIND_OBJECT: {
+    Json_Object_Data data = { ((Json_Hashtable *) json.as.objectval)->count, f};
+    fprintf(f, "{");
+    json_hashtable_for_each((Json_Hashtable *) json.as.objectval, json_object_fprint, &data);
+    fprintf(f, "}");
+  } break;
+  default: {
+    fprintf(stderr, "ERROR: Unknown json kind: %s\n", json_kind_name(json.kind) );
+    exit(1);
+  }
+  }
+}
+
+JSON_DEF bool json_free_object(char *key, size_t key_len, Json *json, size_t index, void *_userdata) {
+  (void) key;
+  (void) key_len;
+  (void) index;
+  (void) _userdata;
+  json_free(*json);
+  return true;
+}
+
+JSON_DEF void json_free(Json json) {
+  switch(json.kind) {
+  case JSON_KIND_NULL:
+  case JSON_KIND_FALSE:
+  case JSON_KIND_TRUE:
+  case JSON_KIND_NUMBER :
+    break;
+  case JSON_KIND_STRING: {
+    json_allocator_free(json_allocator_userdata, (char *) json.as.stringval);
+  } break;
+  case JSON_KIND_ARRAY: {
+
+    for(int i=(int) json.as.arrayval->len-1;i>=0;i--) {
+      json_free(json_array_get(json.as.arrayval, i));
+    }
+    
+    json_array_free(json.as.arrayval);
+  } break;
+  case JSON_KIND_OBJECT: {
+
+    json_hashtable_for_each((Json_Hashtable *) json.as.objectval,
+			    json_free_object, NULL);
+
+    json_object_free(json.as.objectval);
+  } break;
+  default: {
+    fprintf(stderr, "ERROR: Unknown json kind: %s\n", json_kind_name(json.kind) );
+    exit(1);
+  }
+  }
+  
+}
+
+///////////////////////////////////////////////////////////////////////////////////////
+
+static inline uint32_t json_meiyan(const char *key, int count);
+
+JSON_DEF bool json_hashtable_key_init(Json_Hashtable_Key **_k, const char *key, size_t key_len) {
+
+  Json_Hashtable_Key *k = (Json_Hashtable_Key *) json_allocator_alloc(json_allocator_userdata, sizeof(Json_Hashtable_Key));
+  if(!k) {
+    return false;
+  }
+  k->len = key_len;
+  k->key = (char *) json_allocator_alloc(json_allocator_userdata, sizeof(char) * k->len);
+  if(!k->key) {
+    return false;
+  }
+  memcpy(k->key, key, key_len);
+  k->next = NULL;
+  //k->value = -1; // TODO: check if it can be left empty
+
+  *_k = k;
+  
+  return true;
+}
+
+JSON_DEF void json_hashtable_key_free(Json_Hashtable_Key *k) {
+  json_allocator_free(json_allocator_userdata, k->key);
+  if(k->next) json_hashtable_key_free(k->next);
+  json_allocator_free(json_allocator_userdata, k);
+}
+
+static inline uint32_t json_meiyan(const char *key, int count) {
+	typedef uint32_t* P;
+	uint32_t h = 0x811c9dc5;
+	while (count >= 8) {
+		h = (h ^ ((((*(P)key) << 5) | ((*(P)key) >> 27)) ^ *(P)(key + 4))) * 0xad3e7;
+		count -= 8;
+		key += 8;
+	}
+#define tmp h = (h ^ *(uint16_t*)key) * 0xad3e7; key += 2;
+	if (count & 4) { tmp tmp }
+	if (count & 2) { tmp }
+	if (count & 1) { h = (h ^ *key) * 0xad3e7; }
+	#undef tmp
+	return h ^ (h >> 16);
+}
+
+JSON_DEF bool json_hashtable_init(Json_Hashtable *ht, size_t initial_len) {
+
+  if(initial_len == 0) {
+    initial_len = 64;
+  }
+  ht->len = initial_len;
+  ht->count = 0;
+  ht->table = json_allocator_alloc(json_allocator_userdata, sizeof(Json_Hashtable_Key*) * ht->len);
+  if(!ht->table) {
+    return false;
+  }
+  memset(ht->table, 0, sizeof(Json_Hashtable_Key*) * ht->len);
+  ht->growth_treshold = 2.0;
+  ht->growth_factor = 10.0;
+  
+  return true;
+}
+
+JSON_DEF Json_Hashtable_Ret json_hashtable_add(Json_Hashtable *ht, const char *key, size_t key_len) {
+  int n = json_meiyan(key, (int) key_len) % ht->len;
+  if(ht->table[n] == NULL) {
+    double f = (double) ht->count / (double) ht->len;
+    if(f > ht->growth_treshold ) {
+
+#if 1
+      fprintf(stderr, "ERROR: For now resizing is not supported until I implement it.\n");
+      exit(1);
+#else
+      //printf("JSON_HASHTABLE: resizing!\n"); fflush(stdout);
+      if(!json_hashtable_resize(ht, (size_t) ((double) ht->len * ht->growth_factor) )) {
+	return JSON_HASHTABLE_RET_ERROR;
+      }
+      return json_hashtable_add(ht, key, key_len);      
+#endif      
+    }
+    if(!json_hashtable_key_init(&ht->table[n], key, key_len)) {
+      return JSON_HASHTABLE_RET_ERROR;
+    }
+    ht->value = &ht->table[n]->value;
+    ht->count++;
+    return JSON_HASHTABLE_RET_SUCCESS;
+  }
+  Json_Hashtable_Key *k = ht->table[n];
+  while(k) {
+    if(k->len == key_len && (memcmp(k->key, key, key_len) == 0) ) {
+      ht->value = &k->value;
+      return JSON_HASHTABLE_RET_COLLISION;
+    }
+    k = k->next;
+  }
+  ht->count++;
+  Json_Hashtable_Key *old = ht->table[n];
+  if(!json_hashtable_key_init(&ht->table[n], key, key_len)) {
+    return JSON_HASHTABLE_RET_ERROR;
+  }
+  ht->table[n]->next = old;
+  ht->value = &ht->table[n]->value;
+
+  //printf("JSON_HASHTABLE: collision\n");
+  return JSON_HASHTABLE_RET_SUCCESS;
+}
+
+JSON_DEF bool json_hashtable_find(Json_Hashtable *ht, const char *key, size_t key_len) {
+  int n = json_meiyan(key, (int) key_len) % ht->len;
+#if defined(__MINGW32__) || defined(__MINGW64__)
+  __builtin_prefetch(ht->table[n]);
+#endif
+    
+#if defined(_WIN32) || defined(_WIN64)
+  _mm_prefetch((char*)ht->table[n], _MM_HINT_T0);
+#endif
+  Json_Hashtable_Key *k = ht->table[n];
+  if (!k) return false;
+  while (k) {
+    if (k->len == key_len && !memcmp(k->key, key, key_len)) {
+      ht->value = &k->value;
+      return true;
+    }
+    k = k->next;
+  }
+  return false;
+}
+
+JSON_DEF bool json_hashtable_resize(Json_Hashtable *ht, size_t new_len) {
+
+  size_t o = ht->len;
+  Json_Hashtable_Key **old = ht->table;
+  ht->len = new_len;
+  ht->table = json_allocator_alloc(json_allocator_userdata, sizeof(Json_Hashtable_Key*) * ht->len);
+  if(!ht->table) {
+    return false;
+  }
+  memset(ht->table, 0, sizeof(Json_Hashtable_Key*) * ht->len);
+  for(size_t i=0;i<o;i++) {
+    Json_Hashtable_Key *k = old[i];
+    while(k) {
+      Json_Hashtable_Key *next = k->next;
+      k->next = NULL;
+      json_hashtable_reinsert_when_resizing(ht, k);
+      k = next;
+    }
+  }
+  json_allocator_free(json_allocator_userdata, old);
+  
+  return true;
+}
+
+JSON_DEF void json_hashtable_reinsert_when_resizing(Json_Hashtable *ht, Json_Hashtable_Key *k2) {
+  int n = json_meiyan(k2->key, (int) k2->len) % ht->len;
+  if (ht->table[n] == NULL) {
+    ht->table[n] = k2;
+    ht->value = &ht->table[n]->value;
+    return;
+  }
+  Json_Hashtable_Key *k = ht->table[n];
+  k2->next = k;
+  ht->table[n] = k2;
+  ht->value = &k2->value;
+}
+
+JSON_DEF void json_hashtable_for_each(Json_Hashtable *ht, Json_Hashtable_Func func, void *userdata) {
+  size_t j = 0;
+  for(size_t i=0;i<ht->len;i++) {
+    if(ht->table[i] != NULL) {
+      Json_Hashtable_Key *k = ht->table[i];
+      while(k) {
+	if(!func(k->key, k->len, &k->value, j++, userdata)) {
+	  return;
+	}
+	k = k->next;
+      }
+    }
+  }
+}
+
+JSON_DEF void json_hashtable_free(Json_Hashtable *ht) {
+  for(size_t i=0;i<ht->len;i++) {
+    if(ht->table[i]) {
+      json_hashtable_key_free(ht->table[i]);
+    }
+  }
+  json_allocator_free(json_allocator_userdata, ht->table);
+}
+
+#endif //JSON_IMPLEMENTATION
+
+#endif //JSON_H
+#endif // JSON_DISABLE
 
 #ifdef MF_DECODER_ENABLE
 
@@ -27101,220 +28853,6 @@ SPECTRUM_DEF float spectrum_amp(Spectrum_Complex z) {
 #endif // SPECTRUM_H
 #endif // SPECTRUM_DISABLE
 
-#ifdef STRING_ENABLE
-
-#ifndef STRING_H
-#define STRING_H
-
-#ifndef TYPES_H
-#define TYPES_H
-
-#include <stdint.h>
-#include <stdlib.h>
-#include <stdbool.h>
-
-typedef uint8_t u8;
-typedef char s8; // because of mingw warning not 'int8_t'
-typedef uint16_t u16;
-typedef int16_t s16;
-typedef uint32_t u32;
-typedef int32_t s32;
-typedef uint64_t u64;
-typedef int64_t s64;
-
-typedef float f32;
-typedef double f64;
-
-#define return_defer(n) do{			\
-    result = (n);				\
-    goto defer;					\
-  }while(0)
-
-#define errorf(...) do{						\
-    fflush(stdout);						\
-    fprintf(stderr, "%s:%d:ERROR: ", __FILE__, __LINE__);	\
-    fprintf(stderr,  __VA_ARGS__ );				\
-    fprintf(stderr, "\n");					\
-    fflush(stderr);						\
-  }while(0)
-
-#define panicf(...) do{						\
-    errorf(__VA_ARGS__);					\
-    exit(1);							\
-  }while(0)
-
-#endif // TYPES_H
-
-#ifndef STRING_DEF
-#  define STRING_DEF static inline
-#endif // STRING_DEF
-
-typedef struct{
-  const char *data;
-  u64 len;
-}string;
-
-
-#define str_fmt "%.*s"
-#define str_arg(s) (int) (s).len, (s).data
-
-#define string_from(d, l) (string) { (d), (l)}
-#define string_from_cstr(cstr) (string) { (cstr), strlen(cstr) }
-#define string_from_cstr2(cstr, cstr_len) (string) { (cstr), (cstr_len) }
-#define string_to_cstr(s) ((char *) (memcpy(memset(_alloca((s).len + 1), 0, s.len + 1), (s).data, (s).len)) )
-string string_from_u64(u64 n);
-
-#define string_free(s) free((char *) (s).data)
-
-STRING_DEF bool string_copy(string s, string *d);
-STRING_DEF bool string_copy_cstr(const char *cstr, string *d);
-STRING_DEF bool string_copy_cstr2(const char *cstr, u64 cstr_len, string *d);
-
-STRING_DEF s32 string_index_of(string s, const char *needle);
-STRING_DEF s32 string_index_of_off(string s, u64 off, const char *needle);
-STRING_DEF bool string_substring(string s, u64 start, u64 len, string *d);
-STRING_DEF bool string_chop_by(string *s, const char *delim, string *d);
-
-#define STRING_BUILDER_DEFAULT_CAP 256
-
-typedef struct{
-  char *data;
-  u64 len;
-  u64 cap;
-}string_builder;
-
-#define string_builder_free(sb) free((sb).data);
-
-STRING_DEF bool string_builder_append(string_builder *sb, const char *data, size_t data_len);
-STRING_DEF bool string_builder_to_string(string_builder *sb, string *s);
-
-#ifdef STRING_IMPLEMENTATION
-
-#define STRING_FROM_U_CAP 32
-
-static string string_from_u64_impl(char *space, u64 n) {
-  u64 m = snprintf(space, STRING_FROM_U_CAP, "%llu", n);
-  return (string) { space, m };
-}
-
-#define string_from_u64(n) string_from_u64_impl(_alloca(STRING_FROM_U_CAP), n)
-
-STRING_DEF bool string_copy(string s, string *d) {
-  return string_copy_cstr2(s.data, s.len, d);
-}
-
-STRING_DEF bool string_copy_cstr(const char *cstr, string *d) {
-  return string_copy_cstr2(cstr, strlen(cstr), d);
-}
-
-STRING_DEF bool string_copy_cstr2(const char *cstr, u64 cstr_len, string *d) {
-  char *data = malloc(cstr_len);
-  if(!data) return false;
-  memcpy(data, cstr, cstr_len);
-  d->data = (const char *) data;
-  d->len  = cstr_len;
-  return true;
-}
-
-#define string_substring_impl(s, start, len) (string) { (s).data + start, len }
-
-static int string_index_of_impl(const char *haystack, u64 haystack_size, const char* needle, u64 needle_size) {
-  if(needle_size > haystack_size) {
-    return -1;
-  }
-  haystack_size -= needle_size;
-  u64 i, j;
-  for(i=0;i<=haystack_size;i++) {
-    for(j=0;j<needle_size;j++) {
-      if(haystack[i+j] != needle[j]) {
-	break;
-      }
-    }
-    if(j == needle_size) {
-      return (int) i;
-    }
-  }
-  return -1;
-
-}
-
-STRING_DEF s32 string_index_of_off(string s, u64 off, const char *needle) {
-
-  if(off > s.len) {
-    return -1;
-  }
-  
-  s32 pos = string_index_of_impl(s.data + off, s.len - off, needle, strlen(needle));
-  if(pos < 0) {
-    return -1;
-  }
-
-  return pos + (s32) off;
-}
-
-STRING_DEF s32 string_index_of(string s, const char *needle) {  
-  return string_index_of_impl(s.data, s.len, needle, strlen(needle));
-}
-
-STRING_DEF bool string_chop_by(string *s, const char *delim, string *d) {
-  if(!s->len) return false;
-  
-  s32 pos = string_index_of(*s, delim);
-  if(pos < 0) pos = (int) s->len;
-    
-  if(d && !string_substring(*s, 0, pos, d))
-    return false;
-
-  if(pos == (int) s->len) {
-    *d = *s;
-    s->len = 0;
-    return true;
-  } else {
-    return string_substring(*s, pos + 1, s->len - pos - 1, s);
-  }
-
-}
-
-STRING_DEF bool string_substring(string s, u64 start, u64 len, string *d) {
-
-  if(start > s.len) {
-    return false;
-  }
-
-  if(start + len > s.len) {
-    return false;
-  }
-
-  *d = string_substring_impl(s, start, len);
-  
-  return true;
-}
-
-STRING_DEF bool string_builder_append(string_builder *sb, const char *data, size_t data_len) {
-  u64 cap = sb->cap;
-  if(cap == 0) cap = STRING_BUILDER_DEFAULT_CAP;
-  while(sb->len + data_len > cap) {
-    cap *= 2;
-  }
-  if(cap != sb->cap) {
-    sb->cap = cap;
-    sb->data = realloc(sb->data, sb->cap);
-    if(!sb->data) return false;
-  }
-  memcpy(sb->data + sb->len, data, data_len);
-  sb->len += data_len;
-  return true;
-}
-
-STRING_DEF bool string_builder_to_string(string_builder *sb, string *d) {
-  return string_copy_cstr2(sb->data, sb->len, d);
-}
-
-#endif // STRING_IMPLEMENTATION
-
-#endif // STRING_H
-#endif // STRING_DISABLE
-
 #ifdef THREAD_ENABLE
 
 #ifndef THREAD_H_H
@@ -27327,7 +28865,6 @@ STRING_DEF bool string_builder_to_string(string_builder *sb, string *d) {
 //#include <process.h>
 typedef HANDLE Thread;
 typedef HANDLE Mutex;
-//TODO implement for gcc
 #elif __GNUC__ ////////////////////////////////////////////
 #include <pthread.h>
 typedef pthread_t Thread;
@@ -27337,6 +28874,7 @@ typedef pthread_mutex_t Mutex;
 #include <stdint.h> // for uintptr_t
 
 int thread_create(Thread *id, void* (*function)(void *), void *arg);
+int thread_start(void *(*function)(void *), void *arg);
 void thread_join(Thread id);
 void thread_sleep(int ms);
 
@@ -27345,6 +28883,12 @@ void mutex_lock(Mutex mutex);
 void mutex_release(Mutex mutex);
 
 #ifdef THREAD_IMPLEMENTATION
+
+int thread_start(void *(*function)(void *), void *arg) {
+  Thread id;
+
+  return thread_create(&id, function, arg);
+}
 
 #ifdef _WIN32 ////////////////////////////////////////////
 
@@ -27498,31 +29042,38 @@ typedef double f64;
 #  define WAV_DEF static inline
 #endif //WAV_DEF
 
+#define WAV_FMT_PCM 0x1
+#define WAV_FMT_IEEE 0x3
+
 typedef struct {
   int8_t chunkID[4];  // 'RIFF'
   uint32_t chunkSize;
+  
   int8_t riffType[4]; // 'WAVE'
   int8_t fmtID[4];    // 'fmt '
-  uint32_t fmtChunkSize;
+  
+  uint32_t fmtChunkSize;  
   uint16_t wFormatTag;
   uint16_t channels; // wChannels
+  
   uint32_t sample_rate; // dwSamplesPerSec
   uint32_t dwAvgBytesPerSec;
+  
   uint16_t wBlockAlign;
-  uint16_t wBitsPerSample;
-  uint8_t data[4];  // 'data'
+  uint16_t wBitsPerSample;  
+  uint8_t data[4];  // 'data'  
   uint32_t dataSize;
 } Wav_Header;
 
 typedef Wav_Header Wav;
 
 // Public:
-WAV_DEF bool wav_slurp(Wav *wav_header, const char *filepath, unsigned char **data, uint32_t *size);
-WAV_DEF bool wav_read(Wav *wav_header, unsigned char *memory, size_t memory_len, unsigned char **data, uint32_t *size);
+WAV_DEF bool wav_slurp(Wav *wav_header, const char *filepath, unsigned char **data, uint64_t *size);
+WAV_DEF bool wav_read(Wav *wav_header, unsigned char *memory, size_t memory_len, unsigned char **data, uint64_t *size);
 
 #ifdef WAV_IMPLEMENTATION
 
-WAV_DEF bool wav_slurp(Wav *wav_header, const char *filepath, unsigned char **data, uint32_t *size) {
+WAV_DEF bool wav_slurp(Wav *wav_header, const char *filepath, unsigned char **data, uint64_t *size) {
   FILE* f = fopen(filepath, "rb");
   if(!f) {
     return false;
@@ -27534,12 +29085,14 @@ WAV_DEF bool wav_slurp(Wav *wav_header, const char *filepath, unsigned char **da
     return false;
   }
 
-  *size = (uint32_t) wav_header->chunkSize - sizeof(*wav_header);
+  uint64_t off = 32;
+  *size = (uint64_t) wav_header->chunkSize - sizeof(*wav_header) - off;
   *data = (unsigned char *) malloc(*size);
   if(!(*data)) {
     fclose(f);
     return false;
   }
+  fseek(f, (long) off, SEEK_CUR);
   size_t m = fread(*data, 1, *size, f);
   if(m != *size) {
     fclose(f);
@@ -27550,7 +29103,7 @@ WAV_DEF bool wav_slurp(Wav *wav_header, const char *filepath, unsigned char **da
   return true;
 }
 
-WAV_DEF bool wav_read(Wav *wav_header, unsigned char *memory, size_t memory_len, unsigned char **data, uint32_t *size) {
+WAV_DEF bool wav_read(Wav *wav_header, unsigned char *memory, size_t memory_len, unsigned char **data, uint64_t *size) {
 
   size_t header_size = sizeof(*wav_header);
 
@@ -27562,8 +29115,12 @@ WAV_DEF bool wav_read(Wav *wav_header, unsigned char *memory, size_t memory_len,
   
   memory += header_size;
   memory_len -= header_size;
+  
+  uint64_t off = 32;
+  memory += off;
+  memory_len -= off;
 
-  *size = (uint32_t) wav_header->chunkSize - header_size;
+  *size = (uint64_t) wav_header->chunkSize - header_size - off;
   *data = memory;  
 
   return true;
@@ -27596,7 +29153,6 @@ WAV_DEF bool wav_read(Wav *wav_header, unsigned char *memory, size_t memory_len,
 #include <math.h>
 
 #include <windows.h>
-#include <shellapi.h>
 #include <GL/GL.h>
 
 #ifndef WINDOW_DEF
@@ -27612,6 +29168,11 @@ WAV_DEF bool wav_read(Wav *wav_header, unsigned char *memory, size_t memory_len,
 #define WINDOW_BACKSPACE 8
 #define WINDOW_ESCAPE 27
 #define WINDOW_SPACE 32
+
+#define WINDOW_ARROW_LEFT 37
+#define WINDOW_ARROW_UP 38
+#define WINDOW_ARROW_RIGHT 39
+#define WINDOW_ARROW_DOWN 40
 
 typedef enum{
   WINDOW_EVENT_NONE = 0,
@@ -27767,6 +29328,7 @@ static Window_Renderer_Vec4f BLACK = {0, 0, 0, 1};
 
 #ifdef WINDOW_STB_TRUETYPE
 #  define push_font window_renderer_push_font
+#  define push_font_memory window_renderer_push_font_memory
 #  define draw_text(cstr, pos, factor) window_renderer_text((cstr), strlen((cstr)), (pos), (factor), (WHITE))
 #  define draw_text_colored(cstr, pos, factor, color) window_renderer_text((cstr), strlen((cstr)), (pos), (factor), (color))
 #  define draw_text_len(cstr, cstr_len, pos, factor) window_renderer_text((cstr), (cstr_len), (pos), (factor), (WHITE))
@@ -27780,6 +29342,7 @@ static Window_Renderer_Vec4f BLACK = {0, 0, 0, 1};
 
 #ifdef WINDOW_STB_IMAGE
 #  define push_image window_renderer_push_image
+#  define push_image_memory window_renderer_push_image_memory
 #endif //WINDOW_STB_IMAGE
 
 WINDOW_DEF bool window_renderer_init(Window_Renderer *r);
@@ -27817,6 +29380,7 @@ WINDOW_DEF bool window_renderer_slider(Window_Renderer_Vec2f p, Window_Renderer_
 
 #ifdef WINDOW_STB_TRUETYPE
 WINDOW_DEF bool window_renderer_push_font(const char *filepath, float pixel_height);
+WINDOW_DEF bool window_renderer_push_font_memory(unsigned char *memory, size_t memory_len, float pixel_height);
 WINDOW_DEF void window_renderer_measure_text(const char *cstr, size_t cstr_len, float scale, Vec2f *size);
 WINDOW_DEF void window_renderer_text(const char *cstr, size_t cstr_len, Window_Renderer_Vec2f pos, float scale, Window_Renderer_Vec4f color);
 WINDOW_DEF void window_renderer_text_wrapped(const char *cstr, size_t cstr_len, Window_Renderer_Vec2f *pos, Window_Renderer_Vec2f size, float scale, Window_Renderer_Vec4f color);
@@ -27826,6 +29390,7 @@ WINDOW_DEF bool window_renderer_text_button(const char *cstr, size_t cstr_len, f
 
 #ifdef WINDOW_STB_IMAGE
 WINDOW_DEF bool window_renderer_push_image(const char *filepath, int *width, int *height, unsigned int *index);
+WINDOW_DEF bool window_renderer_push_image_memory(unsigned char *data, size_t data_len, int *width, int *height, unsigned int *index);
 #endif //WINDOW_STB_IMAGE
 
 #endif //WINDOW_NO_RENDERER
@@ -28757,14 +30322,24 @@ WINDOW_DEF void window_renderer_solid_rounded_rect(Vec2f pos, Vec2f size, float 
 }
 
 WINDOW_DEF bool window_renderer_button_impl(Window_Renderer_Vec2f p, Window_Renderer_Vec2f s, Window_Renderer_Vec4f *c) {
-  Window_Renderer_Vec2f pos = window_renderer.input;
+  Window_Renderer_Vec2f pos = window_renderer.input;  
   bool holding =
     p.x <= pos.x &&
     (pos.x - p.x) <= s.x &&
     p.y <= pos.y &&
     (pos.y - p.y) <= s.y;
   if(holding) {
-    c->w *= .5;
+    c->w *= .3f;
+  } else {
+    pos = window_renderer.pos;  
+    bool hovering =
+      p.x <= pos.x &&
+      (pos.x - p.x) <= s.x &&
+      p.y <= pos.y &&
+      (pos.y - p.y) <= s.y;
+    if(hovering) {
+      c->w *= .6f;
+    }
   }
   return holding;
 }
@@ -29054,7 +30629,7 @@ WINDOW_DEF bool window_renderer_push_font(const char *filepath, float pixel_heig
   }
     
   fclose(f);
-
+  
   unsigned char *temp_bitmap = malloc(WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE *
 				      WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE);
   
@@ -29072,6 +30647,31 @@ WINDOW_DEF bool window_renderer_push_font(const char *filepath, float pixel_heig
   r->font_height = pixel_height;
 
   free(buffer);
+  free(temp_bitmap);
+    
+  return result;
+  
+}
+
+WINDOW_DEF bool window_renderer_push_font_memory(unsigned char *memory, size_t memory_len, float pixel_height) {
+  (void) memory_len;
+  
+  unsigned char *temp_bitmap = malloc(WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE *
+				      WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE);
+  
+  Window_Renderer *r = &window_renderer;
+  stbtt_BakeFontBitmap(memory, 0, pixel_height,
+		       temp_bitmap,
+		       WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE,
+		       WINDOW_RENDERER_STB_TEMP_BITMAP_SIZE,
+		       32, 96, r->font_cdata);
+
+  unsigned int tex;
+  bool result = push_texture(1024, 1024, temp_bitmap, true, &tex);
+
+  r->font_index = (int) tex;
+  r->font_height = pixel_height;
+
   free(temp_bitmap);
     
   return result;
@@ -29195,8 +30795,20 @@ WINDOW_DEF void window_renderer_measure_text(const char *cstr, size_t cstr_len, 
 
 WINDOW_DEF bool window_renderer_push_image(const char *filepath, int *width, int *height, unsigned int *index) {
 
-  unsigned char *image_data  = stbi_load(filepath, width, height, NULL, 4);
-  if(image_data == NULL)  {
+  unsigned char *image_data = stbi_load(filepath, width, height, NULL, 4);
+  if(image_data == NULL) {
+    return false;
+  }
+
+  bool result = window_renderer_push_texture(*width, *height, image_data, false, index);
+  stbi_image_free(image_data);
+
+  return result;
+}
+
+WINDOW_DEF bool window_renderer_push_image_memory(unsigned char *data, size_t data_len, int *width, int *height, unsigned int *index) {
+  unsigned char *image_data = stbi_load_from_memory(data, (int) data_len, width, height, 0, 4);
+  if(image_data == NULL) {
     return false;
   }
 
@@ -29405,5 +31017,568 @@ WINDOW_DEF void window_win32_opengl_init() {
 
 #endif //WINDOW_H
 #endif // WINDOW_DISABLE
+
+#ifdef _STRING_ENABLE
+
+#ifndef STRING_H
+#define STRING_H
+
+#ifndef TYPES_H
+#define TYPES_H
+
+#include <stdint.h>
+#include <stdlib.h>
+#include <stdbool.h>
+
+typedef uint8_t u8;
+typedef char s8; // because of mingw warning not 'int8_t'
+typedef uint16_t u16;
+typedef int16_t s16;
+typedef uint32_t u32;
+typedef int32_t s32;
+typedef uint64_t u64;
+typedef int64_t s64;
+
+typedef float f32;
+typedef double f64;
+
+#define return_defer(n) do{			\
+    result = (n);				\
+    goto defer;					\
+  }while(0)
+
+#define da_append_many(n, xs, xs_len) do{				\
+    u64 new_cap = (n)->cap;						\
+    while((n)->len + xs_len >= new_cap) {				\
+      new_cap *= 2;							\
+      if(new_cap == 0) new_cap = 16;					\
+    }									\
+    if(new_cap != (n)->cap) {						\
+      (n)->cap = new_cap;						\
+      (n)->items = realloc((n)->items, (n)->cap * sizeof(*((n)->items))); \
+      assert((n)->items);						\
+    }									\
+    memcpy((n)->items + (n)->len, xs, xs_len * sizeof(*((n)->items)));	\
+    (n)->len += xs_len;							\
+  }while(0)
+    
+
+#define da_append(n, x)	do{						\
+    u64 new_cap = (n)->cap;						\
+    while((n)->len >= new_cap) {					\
+      new_cap *= 2;							\
+      if(new_cap == 0) new_cap = 16;					\
+    }									\
+    if(new_cap != (n)->cap) {						\
+      (n)->cap = new_cap;						\
+      (n)->items = realloc((n)->items, (n)->cap * sizeof(*((n)->items))); \
+      assert((n)->items);						\
+    }									\
+    (n)->items[(n)->len++] = x;						\
+  }while(0)
+
+#define errorf(...) do{						\
+    fflush(stdout);						\
+    fprintf(stderr, "%s:%d:ERROR: ", __FILE__, __LINE__);	\
+    fprintf(stderr,  __VA_ARGS__ );				\
+    fprintf(stderr, "\n");					\
+    fflush(stderr);						\
+  }while(0)
+
+#define panicf(...) do{						\
+    errorf(__VA_ARGS__);					\
+    exit(1);							\
+  }while(0)
+
+#endif // TYPES_H
+
+#ifndef STRING_DEF
+#  define STRING_DEF static inline
+#endif // STRING_DEF
+
+typedef struct{
+  const char *data;
+  u64 len;
+}string;
+
+#define str_fmt "%.*s"
+#define str_arg(s) (int) (s).len, (s).data
+
+#define string_from(d, l) (string) { (d), (l)}
+#define string_from_cstr(cstr) (string) { (cstr), strlen(cstr) }
+#define string_from_cstr2(cstr, cstr_len) (string) { (cstr), (cstr_len) }
+#define string_to_cstr(s) ((char *) (memcpy(memset(_alloca((s).len + 1), 0, s.len + 1), (s).data, (s).len)) )
+string string_from_u64(u64 n);
+string stringf(const char *fmt, ...);
+
+#define string_free(s) free((char *) (s).data)
+
+STRING_DEF bool string_copy(string s, string *d);
+STRING_DEF bool string_copy_cstr(const char *cstr, string *d);
+STRING_DEF bool string_copy_cstr2(const char *cstr, u64 cstr_len, string *d);
+
+STRING_DEF bool string_eq(string s, string d);
+STRING_DEF bool string_eq_cstr(string s, const char *cstr);
+STRING_DEF bool string_eq_cstr2(string s, const char *cstr, u64 cstr_len);
+
+STRING_DEF s32 string_index_of(string s, const char *needle);
+STRING_DEF s32 string_index_of_off(string s, u64 off, const char *needle);
+STRING_DEF s32 string_last_index_of(string s, const char *needle);
+STRING_DEF bool string_contains(string s, const char *needle);
+STRING_DEF bool string_substring(string s, u64 start, u64 len, string *d);
+
+STRING_DEF bool string_chop_by(string *s, const char *delim, string *d);
+STRING_DEF bool string_chop_by_pred(string *s, bool (*predicate)(char x), string *d);
+STRING_DEF bool string_chop_left(string *s, u64 n);
+STRING_DEF bool string_chop_right(string *s, u64 n);
+
+STRING_DEF bool string_parse_s64(string s, s64 *n);
+STRING_DEF bool string_parse_f64(string s, f64 *n);
+
+typedef struct{
+  u64 off;
+}cstr_view;
+
+#define cstr_v_arg(cstr, sb) (sb).data + (cstr).off
+
+typedef struct{
+  u64 off;
+  u64 len;
+}string_view;
+
+#define str_v_arg(v, sb) (int) (v).len, (sb).data + (v).off
+
+typedef bool (*string_builder_map)(const char *input, size_t input_size,
+				   char *buffer, size_t buffer_size,
+				   size_t *output_size);
+
+#define STRING_BUILDER_DEFAULT_CAP 256
+
+typedef struct{
+  char *data;
+  u64 len;
+  u64 cap;
+  
+  u64 last;
+}string_builder;
+
+#define sb_fmt "{ data: %p, len: %llu, cap: %llu, last: %llu }"
+#define sb_arg(sb) (void *) (sb).data, (sb).len, (sb).cap, ((sb).last)
+
+#define string_builder_free(sb) free((sb).data);
+
+#define string_builder_capture(sb) (sb).len
+#define string_builder_rewind(sb, l) (sb).last = 0; (sb).len = (l)
+
+STRING_DEF bool string_builder_reserve(string_builder *sb, u64 abs_cap);
+STRING_DEF bool string_builder_append(string_builder *sb, const char *data, size_t data_len);
+STRING_DEF bool string_builder_appends(string_builder *sb, string s);
+STRING_DEF bool string_builder_appendf(string_builder *sb, const char *fmt, ...);
+STRING_DEF bool string_builder_appendm(string_builder *sb, const char *data, size_t data_len, string_builder_map map);
+
+STRING_DEF bool string_builder_to_cstr(string_builder *sb, char **cstr);
+STRING_DEF bool string_builder_to_cstr_view(string_builder *sb, cstr_view *v);
+STRING_DEF bool string_builder_to_string(string_builder *sb, string *s);
+STRING_DEF void string_builder_to_string_view(string_builder *sb, string_view *v);
+
+
+#ifdef STRING_IMPLEMENTATION
+
+string stringf_impl(char *space, int n, ...) {
+
+  va_list list;
+  va_start(list, n);
+
+  const char *fmt = va_arg(list, const char *);
+
+  if(!fmt) {
+    return (string) {NULL, 0};
+  }
+
+  vsnprintf(space, n, fmt, list);
+
+  va_end(list);
+  
+  return (string) { space, n };
+}
+
+#define stringf_concat_impl(a, b) a ##b
+#define stringf_concat(a, b) stringf_concat_impl(a, b)
+#define stringf(...) stringf_impl(_alloca(snprintf(NULL, 0, __VA_ARGS__) + 1), snprintf(NULL, 0, __VA_ARGS__) + 1, __VA_ARGS__)
+ 
+#define STRING_FROM_U_CAP 32
+
+string string_from_u64_impl(char *space, u64 n) {
+  u64 m = snprintf(space, STRING_FROM_U_CAP, "%llu", n);
+  return (string) { space, m };
+}
+
+#define string_from_u64(n) string_from_u64_impl(_alloca(STRING_FROM_U_CAP), n)
+
+STRING_DEF bool string_copy(string s, string *d) {
+  return string_copy_cstr2(s.data, s.len, d);
+}
+
+STRING_DEF bool string_copy_cstr(const char *cstr, string *d) {
+  return string_copy_cstr2(cstr, strlen(cstr), d);
+}
+
+STRING_DEF bool string_copy_cstr2(const char *cstr, u64 cstr_len, string *d) {
+  char *data = malloc(cstr_len);
+  if(!data) return false;
+  memcpy(data, cstr, cstr_len);
+  d->data = (const char *) data;
+  d->len  = cstr_len;
+  return true;
+}
+
+STRING_DEF bool string_eq(string s, string d) {
+  return string_eq_cstr2(s, d.data, d.len);
+}
+
+STRING_DEF bool string_eq_cstr(string s, const char *cstr) {
+  return string_eq_cstr2(s, cstr, strlen(cstr));
+}
+
+STRING_DEF bool string_eq_cstr2(string s, const char *cstr, u64 cstr_len) {
+  if(s.len != cstr_len) {
+    return false;
+  }
+
+  return memcmp(s.data, cstr, cstr_len) == 0;
+}
+
+#define string_substring_impl(s, start, len) (string) { (s).data + start, len }
+
+static int string_index_of_impl(const char *haystack, u64 haystack_size, const char* needle, u64 needle_size) {
+  if(needle_size > haystack_size) {
+    return -1;
+  }
+  haystack_size -= needle_size;
+  u64 i, j;
+  for(i=0;i<=haystack_size;i++) {
+    for(j=0;j<needle_size;j++) {
+      if(haystack[i+j] != needle[j]) {
+	break;
+      }
+    }
+    if(j == needle_size) {
+      return (int) i;
+    }
+  }
+  return -1;
+
+}
+
+STRING_DEF s32 string_index_of_off(string s, u64 off, const char *needle) {
+
+  if(off > s.len) {
+    return -1;
+  }
+  
+  s32 pos = string_index_of_impl(s.data + off, s.len - off, needle, strlen(needle));
+  if(pos < 0) {
+    return -1;
+  }
+
+  return pos + (s32) off;
+}
+
+static s32 string_last_index_of_impl(const char *haystack, u64 haystack_size, const char* needle, u64 needle_size) {
+
+  if(needle_size > haystack_size) {
+    return -1;
+  }
+  
+  s64 i;
+
+  for(i=haystack_size - needle_size - 1;i>=0;i--) {
+    u64 j;
+    for(j=0;j<needle_size;j++) {
+      if(haystack[i+j] != needle[j]) {
+	break;
+      }
+    }
+    if(j == needle_size) {
+      return (s32) i;
+    }
+  }
+  
+  return -1;
+}
+
+STRING_DEF s32 string_last_index_of(string s, const char *needle) {
+  return string_last_index_of_impl(s.data, s.len, needle, strlen(needle));  
+}
+
+STRING_DEF bool string_contains(string s, const char *needle) {
+  return string_index_of(s, needle) >= 0;
+}
+
+STRING_DEF s32 string_index_of(string s, const char *needle) {  
+  return string_index_of_impl(s.data, s.len, needle, strlen(needle));
+}
+
+STRING_DEF bool string_chop_by(string *s, const char *delim, string *d) {
+  if(!s->len) return false;
+  
+  s32 pos = string_index_of(*s, delim);
+  if(pos < 0) pos = (int) s->len;
+    
+  if(d && !string_substring(*s, 0, pos, d))
+    return false;
+
+  if(pos == (int) s->len) {
+    *d = *s;
+    s->len = 0;
+    return true;
+  } else {
+    return string_substring(*s, pos + 1, s->len - pos - 1, s);
+  }
+
+}
+
+STRING_DEF bool string_chop_by_pred(string *s, bool (*predicate)(char x), string *d) {
+  if(!s->len) return false;
+
+  u64 i=0;
+  while(i < s->len && !predicate(s->data[i])) {
+    i++;
+  }
+  u64 j=i;
+  while(j < s->len && predicate(s->data[j])) {
+    j++;
+  }
+
+  if(d && !string_substring(*s, 0, i, d)) {
+    return false;
+  }
+  
+  if(j == s->len) {
+    *d = *s;
+    s->len = 0;
+    return true;
+  } else {
+    return string_substring(*s, j, s->len - j, s);
+  }
+}
+
+STRING_DEF bool string_chop_left(string *s, u64 n) {
+  if(s->len < n) {
+    return false;
+  }
+
+  s->data += n;
+  s->len  -= n;
+  
+  return true;
+}
+
+STRING_DEF bool string_chop_right(string *s, u64 n) {
+  if(s->len < n) {
+    return false;
+  }
+
+  s->data += n;
+  s->len  -= n;
+
+  return true;
+}
+
+STRING_DEF bool string_parse_s64(string s, s64 *n) {
+  u64 i=0;
+  s64 sum = 0;
+  int negative = 0;
+
+  const char *data = s.data;
+  
+  if(s.len && data[0]=='-') {
+    negative = 1;
+    i++;
+  }  
+  while(i<s.len &&
+	'0' <= data[i] && data[i] <= '9') {
+    sum *= 10;
+    s32 digit = data[i] - '0';
+    sum += digit;
+    i++;
+  }
+
+  if(negative) sum*=-1;
+  *n = sum;
+
+  return i>0;
+}
+
+STRING_DEF bool string_parse_f64(string s, f64 *n) {
+  if (s.len == 0) {
+    return false;
+  }
+
+  f64 parsedResult = 0.0;
+  int sign = 1;
+  int decimalFound = 0;
+  int decimalPlaces = 0;
+  f64 exponentFactor = 1.0;
+
+  u8 *data = (u8 *)s.data;
+
+  u64 i = 0;
+
+  if (i < s.len && (data[i] == '+' || data[i] == '-')) {
+    if (data[i] == '-') {
+      sign = -1;
+    }
+    i++;
+  }
+
+  while (i < s.len && isdigit(data[i])) {
+    parsedResult = parsedResult * 10.0 + (data[i] - '0');
+    i++;
+  }
+
+  if (i < s.len && data[i] == '.') {
+    i++;
+    while (i < s.len && isdigit(data[i])) {
+      parsedResult = parsedResult * 10.0 + (data[i] - '0');
+      decimalPlaces++;
+      i++;
+    }
+    decimalFound = 1;
+  }
+
+  exponentFactor = 1.0;
+  for (int j = 0; j < decimalPlaces; j++) {
+    exponentFactor *= 10.0;
+  }
+  
+  parsedResult *= sign;
+  if (decimalFound) {
+    parsedResult /= exponentFactor;
+  }
+
+  *n = parsedResult;
+
+  return true; // Parsing was successful
+}
+
+STRING_DEF bool string_substring(string s, u64 start, u64 len, string *d) {
+
+  if(start > s.len) {
+    return false;
+  }
+
+  if(start + len > s.len) {
+    return false;
+  }
+
+  *d = string_substring_impl(s, start, len);
+  
+  return true;
+}
+
+
+STRING_DEF bool string_builder_reserve(string_builder *sb, u64 abs_cap) {
+  u64 cap = sb->cap;
+  if(cap == 0) cap = STRING_BUILDER_DEFAULT_CAP;
+  while(abs_cap > cap) {
+    cap *= 2;
+  }
+  if(cap != sb->cap) {
+    sb->cap = cap;
+    sb->data = realloc(sb->data, sb->cap);
+    if(!sb->data) return false;
+  }
+  return true;
+}
+
+STRING_DEF bool string_builder_append(string_builder *sb, const char *data, size_t data_len) {
+  if(!string_builder_reserve(sb, sb->len + data_len)) {
+    return false;
+  }
+  memcpy(sb->data + sb->len, data, data_len);
+  sb->len += data_len;
+  return true;
+}
+
+STRING_DEF bool string_builder_appends(string_builder *sb, string s) {
+  return string_builder_append(sb, s.data, s.len);
+}
+
+STRING_DEF bool string_builder_appendf(string_builder *sb, const char *fmt, ...) {
+  va_list list;  
+  va_start(list, fmt);
+  va_list list_copy = list;
+  
+  s32 _n = vsnprintf(NULL, 0, fmt, list) + 1;
+  va_end(list);
+  u64 n = (u64) _n; 
+
+  if(!string_builder_reserve(sb, sb->len + n)) {
+    return false;
+  }
+
+  vsnprintf(sb->data + sb->len, n, fmt, list_copy);
+  
+  sb->len += n - 1;
+  
+  return true;
+
+}
+
+STRING_DEF bool string_builder_appendm(string_builder *sb, const char *data, size_t data_len, string_builder_map map) {
+  u64 estimated_len = data_len * 2;
+  if(!string_builder_reserve(sb, sb->len + estimated_len)) {
+    return false;
+  }
+
+  size_t actual_len;
+  bool result = map(data, data_len, sb->data + sb->len, sb->cap - sb->len, &actual_len);
+  while(!result) {
+    estimated_len *= 2;
+    if(!string_builder_reserve(sb, sb->len + estimated_len)) {
+      return false;
+    }
+    result = map(data, data_len, sb->data + sb->len, sb->cap - sb->len, &actual_len);
+  }
+  sb->len += actual_len;
+
+  return true;
+}
+
+STRING_DEF bool string_builder_to_cstr(string_builder *sb, char **cstr) {
+  char *data = malloc(sb->len + 1);
+  if(!data) return false;
+  memcpy(data, sb->data, sb->len);
+  data[sb->len] = 0;
+  *cstr = data;
+  return true; 
+}
+
+STRING_DEF bool string_builder_to_cstr_view(string_builder *sb, cstr_view *v) {
+  if(!string_builder_append(sb, "\0", 1)) {
+    return false;
+  }
+
+  v->off = sb->last;
+  sb->last = sb->len;
+
+  return true;
+}
+
+STRING_DEF bool string_builder_to_string(string_builder *sb, string *d) {
+  return string_copy_cstr2(sb->data, sb->len, d);
+}
+
+STRING_DEF void string_builder_to_string_view(string_builder *sb, string_view *v) {
+  v->off = sb->last;
+  v->len = sb->len - sb->last;
+  sb->last = sb->len;
+}
+
+#endif // STRING_IMPLEMENTATION
+
+#endif // STRING_H
+#endif // _STRING_DISABLE
 
 #endif // LIBSTD_H

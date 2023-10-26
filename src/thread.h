@@ -8,7 +8,6 @@
 //#include <process.h>
 typedef HANDLE Thread;
 typedef HANDLE Mutex;
-//TODO implement for gcc
 #elif __GNUC__ ////////////////////////////////////////////
 #include <pthread.h>
 typedef pthread_t Thread;
@@ -18,6 +17,7 @@ typedef pthread_mutex_t Mutex;
 #include <stdint.h> // for uintptr_t
 
 int thread_create(Thread *id, void* (*function)(void *), void *arg);
+int thread_start(void *(*function)(void *), void *arg);
 void thread_join(Thread id);
 void thread_sleep(int ms);
 
@@ -26,6 +26,12 @@ void mutex_lock(Mutex mutex);
 void mutex_release(Mutex mutex);
 
 #ifdef THREAD_IMPLEMENTATION
+
+int thread_start(void *(*function)(void *), void *arg) {
+  Thread id;
+
+  return thread_create(&id, function, arg);
+}
 
 #ifdef _WIN32 ////////////////////////////////////////////
 

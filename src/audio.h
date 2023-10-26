@@ -9,6 +9,7 @@
 //   gcc  : -lasound
 
 #include <stdbool.h>
+#include <stdint.h>
 #ifdef _WIN32
 #  include <xaudio2.h>
 #elif linux
@@ -39,7 +40,7 @@ typedef struct{
 
 // Public
 AUDIO_DEF bool audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_rate);
-AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, int samples);
+AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, uint64_t samples);
 //AUDIO_DEF void audio_play_async(Audio *audio, unsigned char *data, int samples);
 AUDIO_DEF void audio_block(Audio *audio);
 AUDIO_DEF void audio_free(Audio *audio);
@@ -163,10 +164,10 @@ AUDIO_DEF bool audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_
     return true;
 }
 
-AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, int samples) {
+AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, uint64_t samples) {
     XAUDIO2_BUFFER xaudioBuffer = {0};
   
-    xaudioBuffer.AudioBytes = samples * audio->sample_size;
+    xaudioBuffer.AudioBytes = (UINT32) (samples * audio->sample_size);
     xaudioBuffer.pAudioData = data;
     xaudioBuffer.pContext = audio;
     
@@ -175,10 +176,10 @@ AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, int samples) {
     WaitForSingleObject((audio)->semaphore, INFINITE);
 }
 
-AUDIO_DEF void audio_play_async(Audio *audio, unsigned char *data, int samples) {
+AUDIO_DEF void audio_play_async(Audio *audio, unsigned char *data, uint64_t samples) {
     XAUDIO2_BUFFER xaudioBuffer = {0};
   
-    xaudioBuffer.AudioBytes = samples * audio->sample_size;
+    xaudioBuffer.AudioBytes = (UINT32) samples * audio->sample_size;
     xaudioBuffer.pAudioData = data;
     xaudioBuffer.pContext = audio;
     
@@ -262,7 +263,7 @@ AUDIO_DEF bool audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_
   return true;  
 }
 
-AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, int samples) {
+AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, uint64_t samples) {
 
   while(samples > 0) {
     int ret = snd_pcm_writei(audio->alsa_snd_pcm, data, samples);
