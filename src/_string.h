@@ -7,6 +7,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <string.h>
+#include <stdarg.h>
+#include <ctype.h>
 
 typedef uint8_t u8;
 typedef char s8; // because of mingw warning not 'int8_t'
