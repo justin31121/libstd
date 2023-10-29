@@ -6,7 +6,17 @@
 
 #ifdef _WIN32
 #  include <windows.h>
-#  define IO_MAX_PATH MAX_PATH  
+#  define IO_MAX_PATH MAX_PATH
+#else
+#  include <stdlib.h>
+#  include <errno.h>
+#  include <string.h>
+#  include <fcntl.h>
+#  include <unistd.h>
+#  include <sys/stat.h>
+#  include <dirent.h>
+#  include <linux/limits.h>
+#  define IO_MAX_PATH PATH_MAX
 #endif //_WIN32
 
 #ifndef IO_DEF
@@ -51,6 +61,7 @@ typedef struct{
 #else
     struct dirent *ent;
     DIR *handle;
+    struct stat stats;
 #endif //_WIN32
 
     const char *name;
@@ -79,16 +90,14 @@ typedef enum{
 #ifdef _WIN32
 typedef struct{ HANDLE handle; DWORD size; DWORD pos; }Io_File;
 #else
-typedef struct{ FILE *f; }Io_File;
+typedef struct{ int fd; size_t size; size_t pos; }Io_File;
 #endif //_WIN32
-
-IO_DEF bool io_file_size(Io_File *f, size_t *size);
 
 IO_DEF bool io_file_open(Io_File *f, const char *filepath, Io_Mode mode);
 IO_DEF int io_file_seek(Io_File *f, long int offset, int whence);
 IO_DEF long int io_file_tell(Io_File *f);
 IO_DEF size_t io_file_read(Io_File *f, void *ptr, size_t size, size_t count);
-IO_DEF size_t io_file_write(Io_File *f, void *ptr, size_t size, size_t nmemb);
+IO_DEF size_t io_file_write(Io_File *f, const void *ptr, size_t size, size_t nmemb);
 IO_DEF void io_file_close(Io_File *f);
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -108,11 +117,8 @@ IO_DEF bool io_slurp_file(const char *filepath, unsigned char **data, size_t *da
     return false;
   }
 
-  if(!io_file_size(&f, data_size)) {
-    io_file_close(&f);
-    return false;
-  }
-
+  *data_size = f.size;
+  
   unsigned char *result = malloc(*data_size);
   if(!result) {
     io_file_close(&f);
@@ -153,6 +159,7 @@ IO_DEF bool io_write_file(const char *filepath, unsigned char *data, size_t data
 }
 
 IO_DEF bool io_delete_file(const char *filepath) {
+#ifdef _WIN32
   if(!DeleteFile(filepath)) {
     IO_LOG("Failed to delete file '%s': (%d) %s",
 	   filepath, io_last_error(), io_last_error_cstr());
@@ -160,6 +167,16 @@ IO_DEF bool io_delete_file(const char *filepath) {
   }
 
   return true;
+#else
+
+  if(remove(filepath) != 0) {
+    IO_LOG("Failed to delete file '%s': (%d) %s",
+	   filepath, io_last_error(), io_last_error_cstr());
+    return false;
+  }
+  
+  return true;
+#endif // _WIN32
 }
 
 IO_DEF bool io_stream_file(const char *filepath, Io_Stream_Callback callback, unsigned char *buf, size_t buf_size, void *userdata) {
@@ -187,6 +204,7 @@ IO_DEF bool io_stream_file(const char *filepath, Io_Stream_Callback callback, un
 }
 
 IO_DEF bool io_create_dir(const char *dir_path, bool *_existed) {
+#ifdef _WIN32
   if(CreateDirectory(dir_path, NULL)) {
     if(_existed) *_existed = false;
     return true;
@@ -201,9 +219,29 @@ IO_DEF bool io_create_dir(const char *dir_path, bool *_existed) {
     if(_existed) *_existed = existed;    
     return true;    
   }
+#else
+
+  if(mkdir(dir_path, S_IRWXU | S_IRWXG | S_IRWXO) == 0) {
+    if(_existed) *_existed = false;
+    return true;
+  } else {
+    bool existed = errno == EEXIST;
+    if(!existed) {
+      IO_LOG("Failed to create direcory '%s': (%d) %s",
+	     dir_path, io_last_error(), io_last_error_cstr());
+      return false;
+    }
+
+    if(_existed) *_existed = existed;
+    return true;
+  }
+  
+
+#endif // _WIN32
 }
 
 IO_DEF bool io_delete_dir(const char *dir_path) {
+  
   Io_Dir dir;
   if(!io_dir_open(&dir, dir_path)) {
     return true;
@@ -233,22 +271,46 @@ IO_DEF bool io_delete_dir(const char *dir_path) {
 
   io_dir_close(&dir);
 
+#ifdef _WIN32
   if(!RemoveDirectory(dir_path)) {
     IO_LOG("Failed to remove direcory '%s': (%d) %s",
 	   dir_path, io_last_error(), io_last_error_cstr()); 
     return false;
   }
+#else
+  if(remove(dir_path) != 0) {
+    IO_LOG("Failed to delete file '%s': (%d) %s",
+	   dir_path, io_last_error(), io_last_error_cstr());
+    return false;
+  }
+#endif // _WIN32
   
   return true;
 }
 
 IO_DEF bool io_exists(const char *file_path, bool *is_file) {
+#ifdef _WIN32
   DWORD attribs = GetFileAttributes(file_path);
   if(is_file) *is_file = !(attribs & FILE_ATTRIBUTE_DIRECTORY);
   return attribs != INVALID_FILE_ATTRIBUTES;
+#else
+  int result = access(file_path, F_OK);
+  if(result < 0) {
+    return false;
+  }
+
+  if(is_file) {
+    struct stat path_stat;
+    stat(file_path, &path_stat);
+    *is_file = S_ISREG(path_stat.st_mode) != 0;
+  }
+
+  return true;
+#endif // _WIN32
 }
 
 IO_DEF bool io_getenv(const char *name, char *buffer, size_t buffer_cap, size_t *buffer_len) {
+#ifdef _WIN32
   if(buffer_len) *buffer_len = 0;
   
   DWORD size = GetEnvironmentVariable(name, buffer, (DWORD) buffer_cap);
@@ -260,11 +322,30 @@ IO_DEF bool io_getenv(const char *name, char *buffer, size_t buffer_cap, size_t 
   if(buffer_len) *buffer_len = size;
 
   if(size > buffer_cap) {
-    IO_LOG("Environment-Variable: '%s' does not find into %llu chars. %lu needed", name, buffer_cap, size);
+    IO_LOG("Environment-Variable: '%s' does not fit into %llu chars. %lu needed", name, buffer_cap, size);
     return false;
   }
 
   return true;
+#else
+  if(buffer_len) *buffer_len = 0;
+
+  char *variable = getenv(name);
+  if(!variable) {
+    IO_LOG("Environment-Variable: '%s' does not exist", name);
+    return false;
+  }
+
+  size_t variable_len = strlen(variable) + 1;
+  if(variable_len > buffer_cap) {
+    IO_LOG("Environment-Variable: '%s' does not fit into %zu chars. %zu needed", name, buffer_cap, variable_len);
+    return false;    
+  }
+
+  memcpy(buffer, variable, variable_len);
+  
+  return true;
+#endif // _WIN32
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -296,7 +377,14 @@ IO_DEF bool io_dir_open(Io_Dir *dir, const char *dir_path) {
   free(my_wstring);
   return true;
 #else
-  return false;
+
+  dir->name = dir_path;
+  dir->handle = opendir(dir_path);
+  if(dir->handle == NULL) {
+    return false;
+  }
+  
+  return true;
 #endif //_WIN32
 }
 
@@ -329,7 +417,29 @@ IO_DEF bool io_dir_next(Io_Dir *dir, Io_Dir_Entry *entry) {
 
   return true;
 #else
-  return false;
+
+  dir->ent = readdir(dir->handle);
+  if(dir->ent == NULL) {
+    return false;
+  }
+
+  size_t d_name_len = strlen(dir->ent->d_name);
+  entry->name = dir->ent->d_name;
+
+  size_t dir_name_len = strlen(dir->name);
+  memcpy(entry->abs_name, dir->name, dir_name_len);
+  entry->abs_name[dir_name_len++] = '/';
+  
+  memcpy(entry->abs_name + dir_name_len, dir->ent->d_name, d_name_len);
+  dir_name_len += d_name_len;
+  entry->abs_name[dir_name_len] = '\0';
+
+  if(stat(entry->abs_name, &dir->stats) < 0) {
+    return false;
+  }
+  entry->is_dir = S_ISDIR(dir->stats.st_mode);
+
+  return true;
 #endif //_WIN32
 }
 
@@ -337,20 +447,11 @@ IO_DEF void io_dir_close(Io_Dir *dir) {
 #ifdef _WIN32
   FindClose(dir->handle);
 #else
-  
+  closedir(dir->handle);
 #endif //_WIN32
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
-
-IO_DEF bool io_file_size(Io_File *f, size_t *size) {
-#ifdef _WIN32
-  *size = f->size;
-  return true;
-#else
-  return false;
-#endif //_WIN32
-}
 
 IO_DEF bool io_file_open(Io_File *f, const char *filepath, Io_Mode mode) {
 #ifdef _WIN32
@@ -384,7 +485,7 @@ IO_DEF bool io_file_open(Io_File *f, const char *filepath, Io_Mode mode) {
       goto error;
     
     f->pos = 0;
-    f->size = INVALID_FILE_SIZE;
+    f->size = 0;
   }
   
   return true;
@@ -395,6 +496,37 @@ IO_DEF bool io_file_open(Io_File *f, const char *filepath, Io_Mode mode) {
   
   return false;
 #else
+  
+  if(mode < 0 || COUNT_IO_MODE <= mode)
+    return false;
+
+  f->fd = -1;
+
+  if(mode == IO_MODE_READ) {
+    f->fd = open(filepath, O_RDONLY);
+    if(f->fd < 0)
+      goto error;
+
+    struct stat stats;
+    if(stat(filepath, &stats) < 0)
+      goto error;
+
+    f->size = (size_t) stats.st_size;
+    f->pos  = 0;
+  } else {
+
+    f->fd = open(filepath, O_CREAT|O_WRONLY|O_TRUNC, S_IRWXU | S_IRWXG | S_IRWXO);
+    if(f->fd < 0)
+      goto error;
+
+    f->size = 0;
+    f->pos  = 0;
+  }
+
+  return true;
+ error:
+  if(f->fd >= 0) close(f->fd);
+  
   return false;
 #endif //_WIN32  
 }
@@ -424,22 +556,21 @@ IO_DEF int io_file_seek(Io_File *f, long int offset, int whence) {
 
   return 0;
 #else
-  return -1;
+  f->pos = (size_t) lseek(f->fd, offset, whence);
+  
+  return (int) f->pos;
 #endif //_WIN32
 }
 
 IO_DEF long int io_file_tell(Io_File *f) {
-#ifdef _WIN32
   return (long int) f->pos;
-#else
-  return -1;
-#endif //_WIN32
 }
 
 IO_DEF void io_file_close(Io_File *f) {
 #ifdef _WIN32
   CloseHandle(f->handle);
 #else
+  close(f->fd);
 #endif //_WIN32
 }
 
@@ -455,21 +586,39 @@ IO_DEF size_t io_file_read(Io_File *f, void *ptr, size_t size, size_t count) {
 
   return (size_t) (bytes_read / size);
 #else
-  return 0;
+
+  size_t bytes_to_read = size * count;
+  ssize_t bytes_read = read(f->fd, ptr, bytes_to_read);
+  if(bytes_read < 0) {
+    return 0;
+  }
+
+  return bytes_read / size;
 #endif //_WIN32
 }
 
-IO_DEF size_t io_file_write(Io_File *f, void *ptr, size_t size, size_t nmemb) {
+IO_DEF size_t io_file_write(Io_File *f, const void *ptr, size_t size, size_t nmemb) {
 #ifdef _WIN32
   DWORD bytes_written;
   DWORD bytes_to_write = (DWORD) (size * nmemb);
   
-  if(!WriteFile(f->handle, ptr, bytes_to_write, &bytes_written, NULL))
+  if(!WriteFile(f->handle, ptr, bytes_to_write, &bytes_written, NULL))p
     return 0;
 
+  f->pos += bytes_to_write;
+  f->size += bytes_to_write;
+  
   return (size_t) (bytes_written / size);
 #else
-  return 0;
+
+  size_t bytes_to_write = size * nmemb;  
+  ssize_t bytes_written = write(f->fd, ptr, bytes_to_write);
+  if(bytes_written < 0) {
+    return 0;
+  }
+
+  return bytes_written / size;
+  
 #endif //_WIN32
 }
 
@@ -479,7 +628,7 @@ IO_DEF int io_last_error() {
 #ifdef _WIN32
   return GetLastError();
 #else
-  return 0;
+  return errno;
 #endif //_WIN32
 }
 
@@ -498,7 +647,7 @@ IO_DEF const char *io_last_error_cstr() {
   
   return buffer;
 #else
-  return NULL;
+  return strerror(errno);
 #endif //_WIN32
 }
 
