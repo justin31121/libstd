@@ -104,7 +104,7 @@ JV_DEF bool jv_parse_object(Json_View *view, const char *data, u64 len);
 JV_DEF bool jv_parse_impl(Json_View *view, const char *data, u64 len, const char *target, u64 target_len, Json_View_Type type);
 
 JV_DEF bool jv_array_next(Json_View *array, Json_View *sub_view);
-JV_DEF bool jv_object_next(Json_View *array, Json_View *key_view, Json_View *value_view);
+JV_DEF bool jv_object_next(Json_View *object, Json_View *key_view, Json_View *value_view);
 
 #ifdef JV_IMPLEMENTATION
 
@@ -150,7 +150,12 @@ JV_DEF bool jv_parse_string(Json_View *view, const char *data, u64 len) {
   u64 i = 1;
   while(true) {
     if(i >= len) return false;
-    if(data[i] == '\"') break;    
+    if(data[i] == '\"') break;
+
+    if(data[i] == '\\') {
+      i++;      
+    }
+    
     i++;
   }
   *view = jv_from(data, i + 1, JSON_VIEW_TYPE_STRING);
@@ -315,26 +320,26 @@ JV_DEF bool jv_array_next(Json_View *array, Json_View *sub_view) {
   return false;
 }
 
-JV_DEF bool jv_object_next(Json_View *array, Json_View *key_view, Json_View *value_view) {
-  assert(array->type == JSON_VIEW_TYPE_OBJECT);
+JV_DEF bool jv_object_next(Json_View *object, Json_View *key_view, Json_View *value_view) {
+  assert(object->type == JSON_VIEW_TYPE_OBJECT);
 
   u64 i = 0;
   while(true) {
-    if(i >= array->len) return false;
-    if(array->data[i] == '}') return false;    
-    if(array->data[i] == '{') {
+    if(i >= object->len) return false;
+    if(object->data[i] == '}') return false;    
+    if(object->data[i] == '{') {
       i++;
       continue;
     }
 
     // whitespace
     while(true) {
-      if(i >= array->len) return false;
-      if(!isspace(array->data[i])) break;
+      if(i >= object->len) return false;
+      if(!isspace(object->data[i])) break;
       i++;
     }
 
-    if(!jv_parse(key_view, array->data + i, array->len - i)) {
+    if(!jv_parse(key_view, object->data + i, object->len - i)) {
       return false;
     }
     if(key_view->type != JSON_VIEW_TYPE_STRING) return false;
@@ -342,38 +347,38 @@ JV_DEF bool jv_object_next(Json_View *array, Json_View *key_view, Json_View *val
 
     // whitespace
     while(true) {
-      if(i >= array->len) return false;
-      if(!isspace(array->data[i])) break;
+      if(i >= object->len) return false;
+      if(!isspace(object->data[i])) break;
       i++;
     }
 
-    if(i >= array->len) return false;
-    if(array->data[i] != ':') return false;
+    if(i >= object->len) return false;
+    if(object->data[i] != ':') return false;
     i++;
 
     // whitespace
     while(true) {
-      if(i >= array->len) return false;
-      if(!isspace(array->data[i])) break;
+      if(i >= object->len) return false;
+      if(!isspace(object->data[i])) break;
       i++;
     }
 
-    if(!jv_parse(value_view, array->data + i, array->len - i)) {
+    if(!jv_parse(value_view, object->data + i, object->len - i)) {
       return false;
     }
     i += value_view->len;
 
     // whitespace
     while(true) {
-      if(i >= array->len) return false;
-      if(!isspace(array->data[i])) break;
+      if(i >= object->len) return false;
+      if(!isspace(object->data[i])) break;
       i++;
     }
 
-    if(i >= array->len) return false;
-    if(array->data[i] == '}' || array->data[i] == ',') {
-      array->data += i + 1;
-      array->len  -= i + 1;
+    if(i >= object->len) return false;
+    if(object->data[i] == '}' || object->data[i] == ',') {
+      object->data += i + 1;
+      object->len  -= i + 1;
       
       return true;
     } else {

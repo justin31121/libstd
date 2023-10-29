@@ -98,6 +98,7 @@ STRING_DEF bool string_copy(string s, string *d);
 STRING_DEF bool string_copy_cstr(const char *cstr, string *d);
 STRING_DEF bool string_copy_cstr2(const char *cstr, u64 cstr_len, string *d);
 
+STRING_DEF int string_compare(const void *a, const void *b);
 STRING_DEF bool string_eq(string s, string d);
 STRING_DEF bool string_eq_cstr(string s, const char *cstr);
 STRING_DEF bool string_eq_cstr2(string s, const char *cstr, u64 cstr_len);
@@ -148,11 +149,12 @@ typedef struct{
 
 #define string_builder_free(sb) free((sb).data);
 
-#define string_builder_capture(sb) (sb).len
-#define string_builder_rewind(sb, l) (sb).last = 0; (sb).len = (l)
+#define string_builder_capture(sb) (sb).last = (sb).len; (sb).len
+#define string_builder_rewind(sb, l) (sb).last = (l); (sb).len = (l)
 
 STRING_DEF bool string_builder_reserve(string_builder *sb, u64 abs_cap);
 STRING_DEF bool string_builder_append(string_builder *sb, const char *data, size_t data_len);
+STRING_DEF bool string_builder_appendc(string_builder *sb, const char *cstr);
 STRING_DEF bool string_builder_appends(string_builder *sb, string s);
 STRING_DEF bool string_builder_appendf(string_builder *sb, const char *fmt, ...);
 STRING_DEF bool string_builder_appendm(string_builder *sb, const char *data, size_t data_len, string_builder_map map);
@@ -211,6 +213,42 @@ STRING_DEF bool string_copy_cstr2(const char *cstr, u64 cstr_len, string *d) {
   d->data = (const char *) data;
   d->len  = cstr_len;
   return true;
+}
+
+STRING_DEF int string_compare(const void *_a, const void *_b) {
+  const string *a = _a;
+  const string *b = _b;
+
+  u64 i =0 ;
+
+  while(true) {
+    
+    if(i >= a->len) {
+      if(i >= b->len) {
+	return 0;
+      } else {
+	return -1;
+      }
+    }
+
+    if(i >= b->len) {
+      if(i >= a->len) {
+	return 0;
+      } else {
+	return 1;
+      }
+    }
+
+    if(a->data[i] < b->data[i] ) {
+      return -1;
+    } else if(a->data[i] > b->data[i] )  {
+      return 1;
+    }
+
+    i++;
+  }
+
+  return 0;
 }
 
 STRING_DEF bool string_eq(string s, string d) {
@@ -479,6 +517,16 @@ STRING_DEF bool string_builder_append(string_builder *sb, const char *data, size
   }
   memcpy(sb->data + sb->len, data, data_len);
   sb->len += data_len;
+  return true;
+}
+
+STRING_DEF bool string_builder_appendc(string_builder *sb, const char *cstr) {
+  u64 cstr_len = strlen(cstr);
+  if(!string_builder_reserve(sb, sb->len + cstr_len)) {
+    return false;
+  }
+  memcpy(sb->data + sb->len, cstr, cstr_len);
+  sb->len += cstr_len;
   return true;
 }
 
