@@ -66,6 +66,17 @@ typedef double f64;
     fflush(stderr);						\
   }while(0)
 
+#define assertf(expr, ...) do{						\
+    if(!(expr)) {							\
+      fflush(stdout);							\
+      fprintf(stderr, "%s:%d:ASSERTION: '%s' - ", __FILE__, __LINE__, #expr); \
+      fprintf(stderr,  "" __VA_ARGS__ );					\
+      fprintf(stderr, "\n");						\
+      fflush(stderr);							\
+      exit(1);								\
+    }									\
+  }while(0)
+
 #define panicf(...) do{						\
     errorf(__VA_ARGS__);					\
     exit(1);							\
@@ -425,8 +436,8 @@ STRING_DEF bool string_parse_s64(string s, s64 *n) {
 
   if(negative) sum*=-1;
   *n = sum;
-
-  return i>0;
+  
+  return i==s.len;
 }
 
 STRING_DEF bool string_parse_f64(string s, f64 *n) {

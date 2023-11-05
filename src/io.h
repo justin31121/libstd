@@ -602,8 +602,9 @@ IO_DEF size_t io_file_write(Io_File *f, const void *ptr, size_t size, size_t nme
   DWORD bytes_written;
   DWORD bytes_to_write = (DWORD) (size * nmemb);
   
-  if(!WriteFile(f->handle, ptr, bytes_to_write, &bytes_written, NULL))p
+  if(!WriteFile(f->handle, ptr, bytes_to_write, &bytes_written, NULL)) {
     return 0;
+  }
 
   f->pos += bytes_to_write;
   f->size += bytes_to_write;

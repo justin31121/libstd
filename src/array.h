@@ -2,7 +2,6 @@
 #define ARRAY_H
 
 #include <stdlib.h>
-#include <assert.h>
 #include <string.h>
 
 #ifdef ARRAY_IMPLEMENTATION
