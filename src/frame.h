@@ -332,6 +332,7 @@ void glGetActiveUniform(GLuint program, GLuint index, GLsizei bufSize, GLsizei *
 void glGetUniformfv(GLuint program, GLint location, GLfloat *params);
 void glGetUniformiv(GLuint program, GLint location, GLsizei bufSize, GLint *params);
 void glSampleCoverage(GLfloat value, GLboolean invert);
+void glCreateTextures(GLenum target, GLsizei n, GLuint *textures);
 int wglSwapIntervalEXT(GLint interval);
 
 #ifdef FRAME_IMPLEMENTATION
@@ -1877,6 +1878,10 @@ void glSampleCoverage(GLfloat value, GLboolean invert) {
   _glSampleCoverage(value, invert);
 }
 
+PROC _glCreateTextures = NULL;
+void glCreateTextures(GLenum target, GLsizei n, GLuint *textures) {
+  _glCreateTextures(target, n, textures);
+}
 
 FRAME_DEF void frame_win32_opengl_init() {
   if(_glActiveTexture != NULL) {
@@ -1912,6 +1917,7 @@ FRAME_DEF void frame_win32_opengl_init() {
   _glUniform1fv= wglGetProcAddress("glUniform1fv");
   _glUniform2fv= wglGetProcAddress("glUniform2fv");
   _glGetUniformiv= wglGetProcAddress("glGetUniformiv");
+  _glCreateTextures = wglGetProcAddress("glCreateTextures");
   _wglSwapIntervalEXT = wglGetProcAddress("wglSwapIntervalEXT");
 }
 
