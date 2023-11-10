@@ -36,7 +36,7 @@ typedef struct{
   char path[MAX_PATH];
 }Component;
 
-#define COMPONENTS_CAP 24
+#define COMPONENTS_CAP 48
 
 Component components[COMPONENTS_CAP] = {0};
 size_t components_count = 0;
