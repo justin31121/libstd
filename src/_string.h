@@ -1,8 +1,19 @@
 #ifndef STRING_H
 #define STRING_H
 
-#ifndef TYPES_H
-#define TYPES_H
+typedef unsigned char string_u8;
+typedef int string_s32;
+typedef unsigned int string_u32;
+typedef long long int string_s64;
+typedef unsigned long long int string_u64;
+typedef double string_f64;
+
+#define  u8 string_u8
+#define s32 string_s32
+#define u32 string_u32
+#define s64 string_s64
+#define u64 string_u64
+#define f64 string_f64
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -11,82 +22,13 @@
 #include <stdarg.h>
 #include <ctype.h>
 
-typedef uint8_t u8;
-typedef char s8; // because of mingw warning not 'int8_t'
-typedef uint16_t u16;
-typedef int16_t s16;
-typedef uint32_t u32;
-typedef int32_t s32;
-typedef uint64_t u64;
-typedef int64_t s64;
-
-typedef float f32;
-typedef double f64;
-
-#define return_defer(n) do{			\
-    result = (n);				\
-    goto defer;					\
-  }while(0)
-
-#define da_append_many(n, xs, xs_len) do{				\
-    u64 new_cap = (n)->cap;						\
-    while((n)->len + xs_len >= new_cap) {				\
-      new_cap *= 2;							\
-      if(new_cap == 0) new_cap = 16;					\
-    }									\
-    if(new_cap != (n)->cap) {						\
-      (n)->cap = new_cap;						\
-      (n)->items = realloc((n)->items, (n)->cap * sizeof(*((n)->items))); \
-      assert((n)->items);						\
-    }									\
-    memcpy((n)->items + (n)->len, xs, xs_len * sizeof(*((n)->items)));	\
-    (n)->len += xs_len;							\
-  }while(0)
-    
-
-#define da_append(n, x)	do{						\
-    u64 new_cap = (n)->cap;						\
-    while((n)->len >= new_cap) {					\
-      new_cap *= 2;							\
-      if(new_cap == 0) new_cap = 16;					\
-    }									\
-    if(new_cap != (n)->cap) {						\
-      (n)->cap = new_cap;						\
-      (n)->items = realloc((n)->items, (n)->cap * sizeof(*((n)->items))); \
-      assert((n)->items);						\
-    }									\
-    (n)->items[(n)->len++] = x;						\
-  }while(0)
-
-#define errorf(...) do{						\
-    fflush(stdout);						\
-    fprintf(stderr, "%s:%d:ERROR: ", __FILE__, __LINE__);	\
-    fprintf(stderr,  __VA_ARGS__ );				\
-    fprintf(stderr, "\n");					\
-    fflush(stderr);						\
-  }while(0)
-
-#define assertf(expr, ...) do{						\
-    if(!(expr)) {							\
-      fflush(stdout);							\
-      fprintf(stderr, "%s:%d:ASSERTION: '%s' - ", __FILE__, __LINE__, #expr); \
-      fprintf(stderr,  "" __VA_ARGS__ );					\
-      fprintf(stderr, "\n");						\
-      fflush(stderr);							\
-      exit(1);								\
-    }									\
-  }while(0)
-
-#define panicf(...) do{						\
-    errorf(__VA_ARGS__);					\
-    exit(1);							\
-  }while(0)
-
-#endif // TYPES_H
-
 #ifndef STRING_DEF
 #  define STRING_DEF static inline
 #endif // STRING_DEF
+
+#ifndef STRING_ASSERT
+#  define STRING_ASSERT
+#endif // STRING_ASSERT
 
 typedef struct{
   const char *data;
@@ -141,9 +83,18 @@ typedef struct{
 
 #define str_v_arg(v, sb) (int) (v).len, (sb).data + (v).off
 
-typedef bool (*string_builder_map)(const char *input, size_t input_size,
-				   char *buffer, size_t buffer_size,
-				   size_t *output_size);
+typedef bool (*string_builder_map)(const char *input, u64 input_size,
+				   char *buffer, u64 buffer_size,
+				   u64 *output_size);
+
+// e.g. 'json' -> 'utf8'
+STRING_DEF bool string_unescape(const char *input, u64 input_size,
+				char *buffer, u64 buffer_size,
+				u64 *output_size);
+// eg. 'utf-8' -> 'json'
+STRING_DEF bool string_escape(const char *input, u64 input_size,
+			      char *buffer, u64 buffer_size,
+			      u64 *out_output_size);
 
 #define STRING_BUILDER_DEFAULT_CAP 256
 
@@ -164,17 +115,24 @@ typedef struct{
 #define string_builder_rewind(sb, l) (sb).last = (l); (sb).len = (l)
 
 STRING_DEF bool string_builder_reserve(string_builder *sb, u64 abs_cap);
-STRING_DEF bool string_builder_append(string_builder *sb, const char *data, size_t data_len);
+STRING_DEF bool string_builder_append(string_builder *sb, const char *data, u64 data_len);
 STRING_DEF bool string_builder_appendc(string_builder *sb, const char *cstr);
 STRING_DEF bool string_builder_appends(string_builder *sb, string s);
 STRING_DEF bool string_builder_appendf(string_builder *sb, const char *fmt, ...);
-STRING_DEF bool string_builder_appendm(string_builder *sb, const char *data, size_t data_len, string_builder_map map);
+STRING_DEF bool string_builder_appendm(string_builder *sb, const char *data, u64 data_len, string_builder_map map);
 
 STRING_DEF bool string_builder_to_cstr(string_builder *sb, char **cstr);
 STRING_DEF bool string_builder_to_cstr_view(string_builder *sb, cstr_view *v);
 STRING_DEF bool string_builder_to_string(string_builder *sb, string *s);
 STRING_DEF void string_builder_to_string_view(string_builder *sb, string_view *v);
 
+typedef u32 Rune;
+
+STRING_DEF void rune_encode(Rune rune, char buf[4], u64 *buf_len);
+STRING_DEF void rune_escape(Rune rune, char buf[6], u64 *buf_len);
+
+STRING_DEF Rune rune_decode(const char **data, u64 *data_len);
+STRING_DEF Rune rune_unescape(const char **data, u64 *data_len);
 
 #ifdef STRING_IMPLEMENTATION
 
@@ -507,6 +465,50 @@ STRING_DEF bool string_substring(string s, u64 start, u64 len, string *d) {
   return true;
 }
 
+STRING_DEF bool string_unescape(const char *input, u64 input_size,
+				char *buffer, u64 buffer_size,
+				u64 *out_output_size) {
+
+  char buf[4];
+  u64 buf_len;
+
+  u64 output_size = 0;
+  
+  while(input_size) {
+    
+    Rune rune = rune_unescape(&input, &input_size);
+    rune_encode(rune, buf, &buf_len);
+    
+    if(output_size + buf_len >= buffer_size) return false;
+    memcpy(buffer + output_size, buf, buf_len);
+    output_size += buf_len;
+  }
+
+  *out_output_size = output_size;
+  return true;
+}
+
+STRING_DEF bool string_escape(const char *input, u64 input_size,
+				char *buffer, u64 buffer_size,
+				u64 *out_output_size) {
+  char buf[6];
+  u64 buf_len;
+
+  u64 output_size = 0;
+  
+  while(input_size) {
+    
+    Rune rune = rune_decode(&input, &input_size);
+    rune_escape(rune, buf, &buf_len);
+    
+    if(output_size + buf_len >= buffer_size) return false;
+    memcpy(buffer + output_size, buf, buf_len);
+    output_size += buf_len;
+  }
+
+  *out_output_size = output_size;
+  return true;
+}
 
 STRING_DEF bool string_builder_reserve(string_builder *sb, u64 abs_cap) {
   u64 cap = sb->cap;
@@ -522,7 +524,7 @@ STRING_DEF bool string_builder_reserve(string_builder *sb, u64 abs_cap) {
   return true;
 }
 
-STRING_DEF bool string_builder_append(string_builder *sb, const char *data, size_t data_len) {
+STRING_DEF bool string_builder_append(string_builder *sb, const char *data, u64 data_len) {
   if(!string_builder_reserve(sb, sb->len + data_len)) {
     return false;
   }
@@ -566,13 +568,13 @@ STRING_DEF bool string_builder_appendf(string_builder *sb, const char *fmt, ...)
 
 }
 
-STRING_DEF bool string_builder_appendm(string_builder *sb, const char *data, size_t data_len, string_builder_map map) {
+STRING_DEF bool string_builder_appendm(string_builder *sb, const char *data, u64 data_len, string_builder_map map) {
   u64 estimated_len = data_len * 2;
   if(!string_builder_reserve(sb, sb->len + estimated_len)) {
     return false;
   }
 
-  size_t actual_len;
+  u64 actual_len;
   bool result = map(data, data_len, sb->data + sb->len, sb->cap - sb->len, &actual_len);
   while(!result) {
     estimated_len *= 2;
@@ -616,6 +618,213 @@ STRING_DEF void string_builder_to_string_view(string_builder *sb, string_view *v
   sb->last = sb->len;
 }
 
+//https://en.wikipedia.org/wiki/UTF-8
+
+// <= 128     ( 7)  0*** ****
+// <= 2048    (11)  110* ****  10** ****
+// <= 262144  (18)  1110 ****  10** ****  10** ****
+// <= 2097152 (21)  1111 0***  10** ****  10** ****  10** ****
+
+STRING_DEF void rune_encode(Rune rune, char buf[4], u64 *buf_len) {
+
+  *buf_len = 0;
+  
+  if(rune <= 128) {
+    buf[(*buf_len)++] = (char) rune;
+  } else if(rune <= 2048) {
+    // **** ****  **** ****  **** *123  4567 89AB
+    //                     |
+    //                     v
+    // ***1 2345 **67 89AB
+    buf[(*buf_len)++] = 0xc0 | ((rune >> 6) & 0x1f);
+    buf[(*buf_len)++] = 0x80 | (rune & 0x3f);
+  } else if(rune <= 65536) {
+    // **** ****  **** ****  1234 5678  9ABC DEFG
+    //                     |
+    //                     v
+    // **** 1234  **56 789A  **BC DEFG
+    buf[(*buf_len)++] = 0xe0 | ((rune >> 12) & 0x0f);
+    buf[(*buf_len)++] = 0x80 | ((rune >> 6) & 0x3f);
+    buf[(*buf_len)++] = 0x80 | (rune & 0x3f);
+  } else {
+    // **** ****  ***1 2345  6789 ABCD  EFGH IJKL
+    //                     |
+    //                     v
+    // **** *123  **45 6789  **AB CDEF  **GH IJKL
+    buf[(*buf_len)++] = 0xf0 | ((rune >> 18) & 0x07);
+    buf[(*buf_len)++] = 0x80 | ((rune >> 12) & 0x3f);
+    buf[(*buf_len)++] = 0x80 | ((rune >> 6) & 0x3f);
+    buf[(*buf_len)++] = 0x80 | (rune & 0x3f);
+  }
+}
+
+STRING_DEF void rune_escape(Rune rune, char buf[6], u64 *buf_len) {
+  *buf_len = 0;
+
+  if(rune <= 128) {
+    char c = (char) rune;
+    
+    switch(c) {
+    case '\"': {
+      buf[(*buf_len)++] = '\\';
+      buf[(*buf_len)++] = '\"';
+    } break;
+    case '\\': {
+      buf[(*buf_len)++] = '\\';
+      buf[(*buf_len)++] = '\\';	
+    } break;
+    case '/': {
+      buf[(*buf_len)++] = '\\';
+      buf[(*buf_len)++] = '/';      
+    } break;
+    case '\b': {
+      buf[(*buf_len)++] = '\\';
+      buf[(*buf_len)++] = 'f';
+    } break;
+    case '\f': {
+      buf[(*buf_len)++] = '\\';
+      buf[(*buf_len)++] = 'f';      
+    } break;
+    case '\n': {
+      buf[(*buf_len)++] = '\\';
+      buf[(*buf_len)++] = 'n';      
+    } break;
+    case '\r': {
+      buf[(*buf_len)++] = '\\';
+      buf[(*buf_len)++] = 'r';
+    } break;
+    case '\t': {
+      buf[(*buf_len)++] = '\\';
+      buf[(*buf_len)++] = 't';
+    } break;
+    default: {
+      buf[(*buf_len)++] = (char) rune;
+    } break;
+    } 
+        
+  } else {
+    buf[0] = '\\';
+    buf[1] = 'u';
+
+    u64 pos = 5;
+
+    while(rune > 0) {
+      char c = (char) (rune % 16);
+      if(c < 10) {
+	c += '0';
+      } else {
+	c += 'W';
+      }
+      buf[pos--] = c;
+      rune /= 16;
+    }
+
+    while(pos >= 2) buf[pos--] = '0';
+    *buf_len = 6;
+  }
+  
+}
+
+STRING_DEF Rune rune_decode(const char **data, u64 *data_len) {
+  char c = (*data)[0];
+
+  Rune rune;
+  if((0xf0 & c) == 0xf0) {    
+    rune = ((Rune) (c & 0x07)) << 18;
+    rune |= ((Rune) ( (*data)[1] & 0x3f )) << 12;
+    rune |= ((Rune) ( (*data)[2] & 0x3f )) <<  6;
+    rune |= (Rune) ( (*data)[3] & 0x3f );
+      
+    *data = *data + 4;
+    *data_len = *data_len - 4;
+  } else if((0xe0 & c) == 0xe0) {
+
+    rune = ((Rune) (c & 0x0f)) << 12;
+    rune |= ((Rune) ( (*data)[1] & 0x3f )) << 6;
+    rune |= (Rune) ( (*data)[2] & 0x3f );
+
+    *data = *data + 3;
+    *data_len = *data_len - 3;
+  } else if((0xc0 & c) == 0xc0) {
+    
+    rune = ((Rune) (c & 0x1f)) << 6;
+    rune |= (Rune) ( (*data)[1] & 0x3f );
+
+    *data = *data + 2;
+    *data_len = *data_len - 2;
+  } else {
+    STRING_ASSERT((0x80 & c) != 0x80);
+    rune = (Rune) c;
+
+    *data = *data + 1;
+    *data_len = *data_len - 1;
+  }
+
+  return rune;
+}
+
+STRING_DEF Rune rune_unescape(const char **data, u64 *data_len) {
+  char c = (*data)[0];
+
+  Rune rune = 0;
+  if(c != '\\') {  // unescaped char 'a'
+    rune = (Rune) c;
+    *data = *data + 1;
+    *data_len = *data_len - 1;
+  } else {
+    c = (*data)[1];
+
+    if(c != 'u') { // escaped char '\n'
+
+      switch(c) {
+      case '\"': rune = (Rune) '\"'; break;
+      case '\\': rune = (Rune) '\\'; break;
+      case '/': rune = (Rune) '/'; break;
+      case 'b': rune = (Rune) '\b'; break;
+      case 'f': rune = (Rune) '\f'; break;
+      case 'n': rune = (Rune) '\n'; break;
+      case 'r': rune = (Rune) '\r'; break;
+      case 't': rune = (Rune) '\t'; break;
+      }
+
+      *data = *data + 2;
+      *data_len = *data_len - 2;
+    } else { // unicode character '\u00d6'
+      
+      Rune n;
+      for(u8 i=0;i<4;i++) {
+    
+	c = (*data)[2 + i];
+	if('0' <= c && c <= '9') {
+	  n = c - '0';
+	} else if('a' <= c && c <= 'f') {
+	  n = c - 'W';
+	} else if('A' <= c && c <= 'F') {
+	  n = c - '7';
+	} else {
+	  break;
+	}
+	rune *= 16;
+	rune += n;
+      }
+
+      *data = *data + 6;
+      *data_len = *data_len - 6;
+    }
+     
+  }
+
+  return rune;
+}
+
+
 #endif // STRING_IMPLEMENTATION
+
+#undef  u8
+#undef s32
+#undef u32
+#undef s64
+#undef u64
+#undef f64
 
 #endif // STRING_H
