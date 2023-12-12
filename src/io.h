@@ -7,6 +7,7 @@
 #ifdef _WIN32
 #  include <windows.h>
 #  define IO_MAX_PATH MAX_PATH
+#  define IO_MAX_ENV 32768
 #else
 #  include <stdlib.h>
 #  include <errno.h>

@@ -56,9 +56,13 @@ STRING_DEF bool string_eq(string s, string d);
 STRING_DEF bool string_eq_cstr(string s, const char *cstr);
 STRING_DEF bool string_eq_cstr2(string s, const char *cstr, u64 cstr_len);
 
-STRING_DEF s32 string_index_of(string s, const char *needle);
-STRING_DEF s32 string_index_of_off(string s, u64 off, const char *needle);
-STRING_DEF s32 string_last_index_of(string s, const char *needle);
+STRING_DEF s32 string_index_of(string s, string needle);
+STRING_DEF s32 string_index_of_off(string s, u64 off, string needle);
+STRING_DEF s32 string_last_index_of(string s, string needle);
+STRING_DEF s32 string_index_ofc(string s, const char *needle);
+STRING_DEF s32 string_index_of_offc(string s, u64 off, const char *needle);
+STRING_DEF s32 string_last_index_ofc(string s, const char *needle);
+
 STRING_DEF bool string_contains(string s, const char *needle);
 STRING_DEF bool string_substring(string s, u64 start, u64 len, string *d);
 
@@ -258,7 +262,20 @@ static int string_index_of_impl(const char *haystack, u64 haystack_size, const c
 
 }
 
-STRING_DEF s32 string_index_of_off(string s, u64 off, const char *needle) {
+STRING_DEF s32 string_index_of_off(string s, u64 off, string needle) {
+  if(off > s.len) {
+    return - 1;
+  }
+
+  s32 pos = string_index_of_impl(s.data + off, s.len - off, needle.data, needle.len);
+  if(pos < 0) {
+    return -1;
+  }
+
+  return pos + (s32) off;
+}
+
+STRING_DEF s32 string_index_of_offc(string s, u64 off, const char *needle) {
 
   if(off > s.len) {
     return -1;
@@ -295,22 +312,30 @@ static s32 string_last_index_of_impl(const char *haystack, u64 haystack_size, co
   return -1;
 }
 
-STRING_DEF s32 string_last_index_of(string s, const char *needle) {
+STRING_DEF s32 string_last_index_of(string s, string needle) {
+  return string_last_index_of_impl(s.data, s.len, needle.data, needle.len);
+}
+
+STRING_DEF s32 string_last_index_ofc(string s, const char *needle) {
   return string_last_index_of_impl(s.data, s.len, needle, strlen(needle));  
 }
 
 STRING_DEF bool string_contains(string s, const char *needle) {
-  return string_index_of(s, needle) >= 0;
+  return string_index_ofc(s, needle) >= 0;
 }
 
-STRING_DEF s32 string_index_of(string s, const char *needle) {  
+STRING_DEF s32 string_index_of(string s, string needle) {
+  return string_index_of_impl(s.data, s.len, needle.data, needle.len);
+}
+
+STRING_DEF s32 string_index_ofc(string s, const char *needle) {  
   return string_index_of_impl(s.data, s.len, needle, strlen(needle));
 }
 
 STRING_DEF bool string_chop_by(string *s, const char *delim, string *d) {
   if(!s->len) return false;
   
-  s32 pos = string_index_of(*s, delim);
+  s32 pos = string_index_ofc(*s, delim);
   if(pos < 0) pos = (int) s->len;
     
   if(d && !string_substring(*s, 0, pos, d))

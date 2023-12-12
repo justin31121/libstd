@@ -35,6 +35,8 @@ typedef struct{
   Json_View_Type type;
 }Json_View;
 
+#define jv_fmt "%.*s"
+#define jv_arg(j) (int) (j).len, (j).data
 #define jv_from(d, l, t) (Json_View) { (d), (l), (t) }
 
 JV_DEF int jv_parse(Json_View *view, const char *data, u64 len);
@@ -98,7 +100,7 @@ JV_DEF int jv_parse(Json_View *view, const char *data, u64 len) {
   else if(*data == '\"') return jv_parse_string(view, data, len);
   else if(*data == '[') return jv_parse_array(view, data, len);
   else if(*data == '{') return jv_parse_object(view, data, len);
-  else if(jv_isdigit(*data)) return jv_parse_number(view, data, len);
+  else if(*data == '-' || jv_isdigit(*data)) return jv_parse_number(view, data, len);
   else return 0;
 
 }
@@ -106,19 +108,26 @@ JV_DEF int jv_parse(Json_View *view, const char *data, u64 len) {
 JV_DEF int jv_parse_impl(Json_View *view, const char *data, u64 len,
 			  const char *target, u64 target_len, Json_View_Type type) {
   
-  if(len != target_len) return 0;
+  if(len < target_len) return 0;
   if(jv_memcmp(data, target, target_len) != 0) return 0;
-  *view = jv_from(data, len, type);
+  *view = jv_from(data, target_len, type);
   
   return 1;
 }
 
 JV_DEF int jv_parse_number(Json_View *view, const char *data, u64 len) {
 
+  int encountered_dot = 0;
+
   u64 i = 1;
   while(1) {
     if(i >= len) return 0;
-    if(!jv_isdigit(data[i])) break;
+    if(data[i] == '.') {
+      if(encountered_dot) return 0;
+      else encountered_dot = 1;
+    } else if(!jv_isdigit(data[i])) {
+      break;
+    }
     i++;
   }
   *view = jv_from(data, i, JV_TYPE_NUMBER);
@@ -357,7 +366,8 @@ JV_DEF int jv_object_next(Json_View *object, Json_View *key_view, Json_View *val
 }
 
 JV_DEF int jv_array_get(Json_View array, u64 index, Json_View *value) {
-  
+
+  index++;
   for(;index;index--) {
     if(!jv_array_next(&array, value)) {
       return 0;
