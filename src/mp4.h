@@ -21,24 +21,6 @@ typedef int64_t s64;
 typedef float f32;
 typedef double f64;
 
-#define return_defer(n) do{			\
-    result = (n);				\
-    goto defer;					\
-  }while(0)
-
-#define errorf(...) do{						\
-    fflush(stdout);						\
-    fprintf(stderr, "%s:%d:ERROR: ", __FILE__, __LINE__);	\
-    fprintf(stderr,  __VA_ARGS__ );				\
-    fprintf(stderr, "\n");					\
-    fflush(stderr);						\
-  }while(0)
-
-#define panicf(...) do{						\
-    errorf(__VA_ARGS__);					\
-    exit(1);							\
-  }while(0)
-
 #endif // TYPES_H
 
 #ifndef MP4_DEF
@@ -85,6 +67,7 @@ typedef enum{
   MP4_TYPE_TRUN,
   MP4_TYPE_MDAT,
   MP4_TYPE_UDTA,
+  MP4_TYPE_EDTS,
 }Mp4_Type;
 
 typedef char Mp4_Word[5]; // 4 + '\0'
@@ -106,6 +89,8 @@ typedef struct{
   u8 *data;
   u64 len;
 }Mp4;
+
+#define mp4_from(data, len) (Mp4) {(data), (len)}
 
 typedef struct{
   u32 track_id;  
@@ -135,7 +120,19 @@ typedef struct{
   u16 width, height;
 }Mp4_Media;
 
-#define mp4_from(data, len) (Mp4) {(data), (len)}
+#define MP4_WINDOW_CAP 1024
+
+typedef struct{
+  u8 data[MP4_WINDOW_CAP];
+  u64 len;
+
+  u32 last_offset;
+  u64 last_len;
+  
+  Mp4 mp4_copy;
+}Mp4_Window;
+
+#define mp4_window_from(m) (Mp4_Window) { .len = 0, .last_offset = 0, .last_len = 0, .mp4_copy = (m) }
 
 MP4_DEF bool mp4_next_media(Mp4 *m, Mp4_Media *media);
 MP4_DEF bool mp4_has_audio(Mp4 m, Mp4_Media *media);
@@ -145,6 +142,8 @@ MP4_DEF bool mp4_media_next_data(Mp4_Media *media, u32 *offset, u64 *len);
 MP4_DEF bool mp4_find(Mp4 m, Mp4_Type type, Mp4 *dest);
 MP4_DEF bool mp4_find_next(Mp4 *m, Mp4_Type type, Mp4 *dest);
 MP4_DEF bool mp4_next(Mp4 *m, u32 *size, Mp4_Type *type);
+
+MP4_DEF bool mp4_window_next(Mp4 *m, Mp4_Media *media, Mp4_Window *w);
 
 const char *mp4_type_name(Mp4_Type t);
 
@@ -221,7 +220,7 @@ static inline u16 mp4_swap_u16(u16 in) {
 #endif // return_defer
 
 static const Mp4_Word mp4_box_names[] = {
-  "NONE", "ftyp", "moov", "mvhd", "mvex", "trex", "trak", "tkhd", "mdia", "mdhd", "hdlr", "minf", "dinf", "dref", "stbl", "stsd", "stts", "stsc", "stco", "stsz", "smhd", "sidx", "moof", "mfhd", "traf", "tfhd", "tfdt", "trun", "mdat", "udta"
+  "NONE", "ftyp", "moov", "mvhd", "mvex", "trex", "trak", "tkhd", "mdia", "mdhd", "hdlr", "minf", "dinf", "dref", "stbl", "stsd", "stts", "stsc", "stco", "stsz", "smhd", "sidx", "moof", "mfhd", "traf", "tfhd", "tfdt", "trun", "mdat", "udta", "edts"
 };
 
 static u64 mp4_box_names_len = sizeof(mp4_box_names) / sizeof(*mp4_box_names);
@@ -524,7 +523,7 @@ MP4_DEF bool mp4_media_next_data(Mp4_Media *media, u32 *offset, u64 *len) {
   media->chunk_index++; 
 
   // Peek sample_entry
-  u32 first_chunk, sample_count;
+  u32 first_chunk = 0, sample_count = 0;
   bool could_peek = media->entries.len > 0;
   if(could_peek) {
     __MP4_READ_U32(&first_chunk, media->entries);
@@ -623,6 +622,39 @@ MP4_DEF bool mp4_next(Mp4 *m, u32 *size, Mp4_Type *t) {
   }
   
   return found;
+}
+
+MP4_DEF bool mp4_window_next(Mp4 *mp4, Mp4_Media *media, Mp4_Window *w) {
+
+  while(w->len < MP4_WINDOW_CAP) {
+
+    if(w->last_len == 0) {
+      if(media->tables_are_empty) {
+	// Find data with 'moof's
+	u8 *buf;
+	if(!mp4_next_fragmented_data(mp4, media->track_id, &buf, &w->last_len)) {
+	  return false;
+	}
+	w->last_offset = (u32) (buf - w->mp4_copy.data);
+      } else {
+	// Find data with tables    
+	  if(!mp4_media_next_data(media, &w->last_offset, &w->last_len)) {
+	    return false;
+	  }
+      }
+    }
+
+    u64 len = MP4_WINDOW_CAP - w->len;
+    if(w->last_len < len) {
+      len = w->last_len;
+    }
+    memcpy(w->data + w->len, w->mp4_copy.data + w->last_offset, len);
+    w->len += len;
+    w->last_offset += len;
+    w->last_len -= len;
+  }
+  
+  return true;
 }
 
 #endif // MP4_IMPLEMENTATION

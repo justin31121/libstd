@@ -456,13 +456,19 @@ IO_DEF void io_dir_close(Io_Dir *dir) {
 
 IO_DEF bool io_file_open(Io_File *f, const char *filepath, Io_Mode mode) {
 #ifdef _WIN32
+  
+  wchar_t windows_filepath[MAX_PATH];
+  int n = MultiByteToWideChar(CP_UTF8, 0, filepath, -1, NULL, 0);
+  MultiByteToWideChar(CP_UTF8, 0, filepath, -1, windows_filepath, n);
+  windows_filepath[n] = 0;
+  
   if(mode < 0 || COUNT_IO_MODE <= mode)
     return false;
 
   f->handle = INVALID_HANDLE_VALUE;
 
   if(mode == IO_MODE_READ) {
-    f->handle = CreateFile(filepath, GENERIC_READ,
+    f->handle = CreateFileW(windows_filepath, GENERIC_READ,
 			   FILE_SHARE_READ,
 			   NULL,
 			   OPEN_EXISTING,
@@ -477,7 +483,7 @@ IO_DEF bool io_file_open(Io_File *f, const char *filepath, Io_Mode mode) {
 
     f->pos = 0;
   } else {
-    f->handle = CreateFile(filepath,
+    f->handle = CreateFileW(windows_filepath,
 			   GENERIC_WRITE, 0, NULL,
 			   CREATE_ALWAYS,
 			   FILE_ATTRIBUTE_NORMAL,
