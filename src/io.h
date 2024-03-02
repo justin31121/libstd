@@ -161,7 +161,11 @@ IO_DEF bool io_write_file(const char *filepath, unsigned char *data, size_t data
 
 IO_DEF bool io_delete_file(const char *filepath) {
 #ifdef _WIN32
-  if(!DeleteFile(filepath)) {
+
+  wchar_t windows_filepath[MAX_PATH];
+  MultiByteToWideChar(CP_UTF8, 0, filepath, -1, windows_filepath, MAX_PATH);
+  
+  if(!DeleteFileW(windows_filepath)) {
     IO_LOG("Failed to delete file '%s': (%d) %s",
 	   filepath, io_last_error(), io_last_error_cstr());
     return false;
@@ -206,7 +210,11 @@ IO_DEF bool io_stream_file(const char *filepath, Io_Stream_Callback callback, un
 
 IO_DEF bool io_create_dir(const char *dir_path, bool *_existed) {
 #ifdef _WIN32
-  if(CreateDirectory(dir_path, NULL)) {
+  
+  wchar_t windows_dirpath[MAX_PATH];
+  MultiByteToWideChar(CP_UTF8, 0, dir_path, -1, windows_dirpath, MAX_PATH);
+  
+  if(CreateDirectoryW(windows_dirpath, NULL)) {
     if(_existed) *_existed = false;
     return true;
   } else {
@@ -273,7 +281,11 @@ IO_DEF bool io_delete_dir(const char *dir_path) {
   io_dir_close(&dir);
 
 #ifdef _WIN32
-  if(!RemoveDirectory(dir_path)) {
+
+  wchar_t windows_dirpath[MAX_PATH];
+  MultiByteToWideChar(CP_UTF8, 0, dir_path, -1, windows_dirpath, MAX_PATH);
+  
+  if(!RemoveDirectoryW(windows_dirpath)) {
     IO_LOG("Failed to remove direcory '%s': (%d) %s",
 	   dir_path, io_last_error(), io_last_error_cstr()); 
     return false;
@@ -291,7 +303,11 @@ IO_DEF bool io_delete_dir(const char *dir_path) {
 
 IO_DEF bool io_exists(const char *file_path, bool *is_file) {
 #ifdef _WIN32
-  DWORD attribs = GetFileAttributes(file_path);
+
+  wchar_t windows_file_path[MAX_PATH];
+  MultiByteToWideChar(CP_UTF8, 0, file_path, -1, windows_file_path, MAX_PATH);
+  
+  DWORD attribs = GetFileAttributesW(windows_file_path);
   if(is_file) *is_file = !(attribs & FILE_ATTRIBUTE_DIRECTORY);
   return attribs != INVALID_FILE_ATTRIBUTES;
 #else
@@ -351,31 +367,26 @@ IO_DEF bool io_getenv(const char *name, char *buffer, size_t buffer_cap, size_t 
 
 ////////////////////////////////////////////////////////////////////////////////////////
 
-IO_DEF bool io_dir_open(Io_Dir *dir, const char *dir_path) {
+IO_DEF bool io_dir_open(Io_Dir *dir, const char *dirpath) {
 #ifdef _WIN32
-  int num_wchars = MultiByteToWideChar(CP_UTF8, 0, dir_path, -1, NULL, 0); 
-  wchar_t *my_wstring = (wchar_t *)malloc((num_wchars+1) * sizeof(wchar_t));
-  MultiByteToWideChar(CP_UTF8, 0, dir_path, -1, my_wstring, num_wchars);
-  my_wstring[num_wchars-1] = '*';
-  my_wstring[num_wchars] = 0;
+
+  wchar_t windows_dirpath[MAX_PATH];
+  MultiByteToWideChar(CP_UTF8, 0, dirpath, -1, windows_dirpath, MAX_PATH);
 
   // Use my_wstring as a const wchar_t *
-  dir->handle = FindFirstFileExW(my_wstring, FindExInfoStandard, &dir->file_data, FindExSearchNameMatch, NULL, 0);
+  dir->handle = FindFirstFileExW(windows_dirpath, FindExInfoStandard, &dir->file_data, FindExSearchNameMatch, NULL, 0);
   if(dir->handle == INVALID_HANDLE_VALUE) {
-    free(my_wstring);
     return false;
   }
 
   bool is_dir = (dir->file_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) > 0;
   if(!is_dir) {
-    free(my_wstring);
     return false;
   }
 
-  dir->name = dir_path;
+  dir->name = dirpath;
   dir->stop = false;
 
-  free(my_wstring);
   return true;
 #else
 
@@ -396,19 +407,27 @@ IO_DEF bool io_dir_next(Io_Dir *dir, Io_Dir_Entry *entry) {
   }
 
   entry->is_dir = (dir->file_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) > 0;
-
+  
   size_t len = strlen(dir->name);
+  if(len >= 2) len -= 1;
+  
   memcpy(entry->abs_name, dir->name, len);
-  int len2 = WideCharToMultiByte(CP_ACP, 0, dir->file_data.cFileName, -1, NULL, 0, NULL, NULL);
-  WideCharToMultiByte(CP_ACP, 0, dir->file_data.cFileName, -1, entry->abs_name + len, len2, NULL, NULL);
+  int len2 = WideCharToMultiByte(CP_UTF8,
+				 0,
+				 dir->file_data.cFileName,
+				 -1,
+				 entry->abs_name + len,
+				 MAX_PATH - len,
+				 NULL,
+				 NULL);
 
-  //WHAT IS THIS
-  if(entry->is_dir) {
-    entry->abs_name[len + len2-1] = '/';
-    entry->abs_name[len + len2] = 0;       
-  } else {
-    entry->abs_name[len + len2-1] = 0;
-  }
+  /* //WHAT IS THIS */
+  /* if(entry->is_dir) { */
+  /*   entry->abs_name[len + len2-1] = '/'; */
+  /*   entry->abs_name[len + len2] = 0;        */
+  /* } else { */
+  /*   entry->abs_name[len + len2-1] = 0; */
+  /* } */
 
   entry->name = (char *) &entry->abs_name[len];
 
@@ -458,9 +477,7 @@ IO_DEF bool io_file_open(Io_File *f, const char *filepath, Io_Mode mode) {
 #ifdef _WIN32
   
   wchar_t windows_filepath[MAX_PATH];
-  int n = MultiByteToWideChar(CP_UTF8, 0, filepath, -1, NULL, 0);
-  MultiByteToWideChar(CP_UTF8, 0, filepath, -1, windows_filepath, n);
-  windows_filepath[n] = 0;
+  MultiByteToWideChar(CP_UTF8, 0, filepath, -1, windows_filepath, MAX_PATH);
   
   if(mode < 0 || COUNT_IO_MODE <= mode)
     return false;
