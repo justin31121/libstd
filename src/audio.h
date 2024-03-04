@@ -8,7 +8,6 @@
 // linux
 //   gcc  : -lasound
 
-#include <stdbool.h>
 #ifdef _WIN32
 #  include <xaudio2.h>
 #elif linux
@@ -38,13 +37,13 @@ typedef struct{
 }Audio;
 
 // Public
-AUDIO_DEF bool audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_rate);
+AUDIO_DEF int audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_rate);
 AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, int samples);
 //AUDIO_DEF void audio_play_async(Audio *audio, unsigned char *data, int samples);
 AUDIO_DEF void audio_block(Audio *audio);
 AUDIO_DEF void audio_free(Audio *audio);
 
-AUDIO_DEF bool audio_fmt_bits_per_sample(int *bits, Audio_Fmt fmt);
+AUDIO_DEF int audio_fmt_bits_per_sample(int *bits, Audio_Fmt fmt);
 
 // Private
 
@@ -52,7 +51,7 @@ AUDIO_DEF bool audio_fmt_bits_per_sample(int *bits, Audio_Fmt fmt);
 
 #ifdef _WIN32
 
-static bool audio_co_initialized = false;
+static int audio_co_initialized = 0;
 static IXAudio2* audio_xaudio2 = NULL;
 static IXAudio2MasteringVoice *audio_xaudio2_mastering_voice = NULL;
 
@@ -76,46 +75,46 @@ static IXAudio2VoiceCallback audio_xaudio2_callbacks = {
     }
 };
 
-AUDIO_DEF bool audio_fmt_format_tag(int *tag, Audio_Fmt fmt) {
+AUDIO_DEF int audio_fmt_format_tag(int *tag, Audio_Fmt fmt) {
     switch(fmt) {
     case AUDIO_FMT_S16: {
 	*tag = WAVE_FORMAT_PCM;
-	return true;
+	return 1;
     } break;
     case AUDIO_FMT_FLT: {
 	*tag = WAVE_FORMAT_IEEE_FLOAT;
-	return true;
+	return 1;
     } break;
     default: {
-	return false;	
+	return 0;	
     } break;
     }
 }
 
-AUDIO_DEF bool audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_rate) {    
+AUDIO_DEF int audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_rate) {    
     audio->sample_rate = sample_rate;
     audio->channels    = channels;
 
     int bits_per_sample;
     if(!audio_fmt_bits_per_sample(&bits_per_sample, fmt)) {
-	return false;
+	return 0;
     }
     int format_tag;
     if(!audio_fmt_format_tag(&format_tag, fmt)) {
-	return false;
+	return 0;
     }
     audio->sample_size = bits_per_sample * channels / 8;
 
     if( !audio_co_initialized ) {
 	if( FAILED(CoInitializeEx(NULL, COINIT_MULTITHREADED)) ) {
-	    return false;
+	    return 0;
 	}
-	audio_co_initialized = true;
+	audio_co_initialized = 1;
     } 
 
     if( !audio_xaudio2 &&
 	FAILED(XAudio2Create(&audio_xaudio2, 0, XAUDIO2_DEFAULT_PROCESSOR)) ) {
-	return false;
+	return 0;
     }
 
     if(!audio_xaudio2_mastering_voice &&
@@ -128,7 +127,7 @@ AUDIO_DEF bool audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_
 				   0,
 				   NULL,
 				   AudioCategory_GameEffects)) ) {
-	return false;
+	return 0;
     }
 
     WAVEFORMATEX wave_format;
@@ -149,7 +148,7 @@ AUDIO_DEF bool audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_
 				 &audio_xaudio2_callbacks,
 				 NULL,
 				 NULL)) ) {
-	return false;
+	return 0;
     }
 
     audio->xaudio2_source_voice->lpVtbl->Start(audio->xaudio2_source_voice, 0, XAUDIO2_COMMIT_NOW);    
@@ -157,10 +156,10 @@ AUDIO_DEF bool audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_
     ReleaseSemaphore(audio->semaphore, 1, NULL);
     
     if(GetLastError() == ERROR_ALREADY_EXISTS) {
-	return false;
+	return 0;
     }
     
-    return true;
+    return 1;
 }
 
 AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, int samples) {
@@ -215,32 +214,32 @@ AUDIO_DEF void audio_xaudio2_OnVoiceError(IXAudio2VoiceCallback* This, void* pBu
 
 #elif linux
 
-AUDIO_DEF bool audio_fmt_pcm_format(snd_pcm_format_t *format, Audio_Fmt fmt) {
+AUDIO_DEF int audio_fmt_pcm_format(snd_pcm_format_t *format, Audio_Fmt fmt) {
   switch(fmt) {
   case AUDIO_FMT_S16: {
     *format = SND_PCM_FORMAT_S16_LE;
-    return true;
+    return 1;
   } break;
   default: {
-    return false;
+    return 0;
   } break;
   }
 }
 
-AUDIO_DEF bool audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_rate) {
+AUDIO_DEF int audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_rate) {
   if(snd_pcm_open(&audio->alsa_snd_pcm, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
-    return false;
+    return 0;
   }
 
   int bits_per_sample;
   if(!audio_fmt_bits_per_sample(&bits_per_sample, fmt)) {
-    return false;
+    return 0;
   }
   audio->sample_size = bits_per_sample * channels / 8;
 
   snd_pcm_format_t snd_pcm_format;
   if(!audio_fmt_pcm_format(&snd_pcm_format, fmt)) {
-    return false;
+    return 0;
   }
   
   if(snd_pcm_set_params(audio->alsa_snd_pcm,
@@ -250,16 +249,16 @@ AUDIO_DEF bool audio_init(Audio *audio, Audio_Fmt fmt, int channels, int sample_
 			sample_rate,
 			0,
 			sample_rate / 4) < 0) {
-    return false;
+    return 0;
   }
   snd_pcm_uframes_t buffer_size = 0;
   snd_pcm_uframes_t period_size = 0;
   if(snd_pcm_get_params(audio->alsa_snd_pcm, &buffer_size, &period_size) < 0) {
-    return false;
+    return 0;
   }
   snd_pcm_prepare(audio->alsa_snd_pcm);
 
-  return true;  
+  return 1;  
 }
 
 AUDIO_DEF void audio_play(Audio *audio, unsigned char *data, int samples) {
@@ -291,18 +290,18 @@ AUDIO_DEF void audio_block(Audio *audio) {
 
 #endif //_WIN32
 
-AUDIO_DEF bool audio_fmt_bits_per_sample(int *bits, Audio_Fmt fmt) {
+AUDIO_DEF int audio_fmt_bits_per_sample(int *bits, Audio_Fmt fmt) {
     switch(fmt) {
     case AUDIO_FMT_S16: {
 	*bits = 16;
-	return true;
+	return 1;
     } break;
     case AUDIO_FMT_FLT: {
 	*bits = 32;
-	return true;
+	return 1;
     } break;
     default: {
-	return false;	
+	return 0;	
     } break;
     }
 }
